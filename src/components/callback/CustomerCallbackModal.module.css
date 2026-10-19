@@ -933,84 +933,103 @@
   color: #ffffff;
 }
 
-/* Bottom Input Row */
-.inputSection {
-  padding: 14px 20px;
+/* Live Voice Turn Dock & Audio Transcript Footer */
+.voiceTurnDock {
+  padding: 16px 20px;
   border-top: 1px solid #1e293b;
-  background-color: #0b1522;
+  background-color: #0d1927;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   flex-shrink: 0;
 }
 
-.textInput {
-  flex: 1;
+.voiceTurnStatusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
   background-color: #111c2e;
   border: 1px solid #1e293b;
   border-radius: 12px;
-  padding: 12px 16px;
-  font-size: 14px;
-  color: #ffffff;
-  outline: none;
-  transition: border-color 0.15s ease;
 }
 
-.textInput:focus {
+.voiceTurnStatusLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.voiceTurnTextGreen {
+  color: #34d399;
+}
+
+.voiceTurnTextPurple {
+  color: #a78bfa;
+}
+
+.voiceTurnTextAmber {
+  color: #fbbf24;
+}
+
+.voiceClientTriggersSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.triggersLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+
+.voiceTriggersGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.voiceTriggerBtn {
+  background-color: #112233;
+  border: 1px solid #1e3a5f;
+  color: #cbd5e1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voiceTriggerBtn:hover:not(:disabled) {
+  background-color: #1a365d;
   border-color: #3b82f6;
-}
-
-.micCircleBtn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background-color: #102a43;
-  border: 1px solid #204060;
-  color: #38bdf8;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.micCircleBtn:hover {
-  background-color: #0284c7;
   color: #ffffff;
-}
-
-.micCircleBtnListening {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-color: #34d399;
-  color: #ffffff;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
-  animation: pulseAnimation 1.2s infinite;
-}
-
-.sendBtn {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  border: none;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.sendBtn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   transform: translateY(-1px);
 }
 
-.sendBtn:disabled {
-  opacity: 0.5;
+.voiceTriggerBtn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+  border-color: #1e293b;
+  background-color: #0b1522;
+}
+
+.voiceTriggerIcon {
+  color: #60a5fa;
+  flex-shrink: 0;
 }
 
 /* Mobile Tabs switcher for workspace on smaller screens */

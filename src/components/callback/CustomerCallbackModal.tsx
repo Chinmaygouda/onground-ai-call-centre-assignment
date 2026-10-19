@@ -9,7 +9,6 @@ import {
   MicOff,
   Volume2,
   VolumeX,
-  Send,
   CheckCircle2,
   ArrowRight,
   ChevronLeft,
@@ -17,7 +16,8 @@ import {
   AlertCircle,
   PhoneForwarded,
   Phone,
-  Radio
+  Radio,
+  FileText
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
@@ -26,11 +26,11 @@ import { normalizePhoneNumber } from '../../utils/phoneUtils';
 import { RecentCall } from '../../types';
 import styles from './CustomerCallbackModal.module.css';
 
-export const SUGGESTED_CLIENT_RESPONSES = [
-  'Yeah, I was looking for the SmartGRID Ortho mattress. Is it in stock?',
+export const CLIENT_VOICE_UTTERANCES = [
+  'Yeah, I was looking for the SmartGRID Ortho mattress. Is Queen size in stock?',
   'How many units are available in Queen size?',
-  'What are the current offers and discounts on mattresses?',
-  'Can someone from the frontline team call me this evening to book it?'
+  'What are the current festive discounts on mattresses?',
+  'Can frontline agent Arvind Rajan call me this evening to finalize the order?'
 ];
 
 export const PREFERRED_TIME_WINDOWS = [
@@ -65,32 +65,35 @@ export const CustomerCallbackModal: React.FC = () => {
     speakAnswer,
     stopSpeaking,
     turns,
-    userTranscript,
-    errorMessage
+    userTranscript
   } = useGeminiLive();
 
   // Modal Step State
   const [step, setStep] = useState<
     'choice' | 'human_form' | 'human_confirmed' | 'direct_called' | 'ai_workspace' | 'session_ended'
   >('choice');
-  const [mobileTab, setMobileTab] = useState<'call' | 'agent'>('call');
+  const [mobileTab, setMobileTab] = useState<'call' | 'transcript'>('call');
 
   // Human Callback Form State
   const [preferredTime, setPreferredTime] = useState<string>(PREFERRED_TIME_WINDOWS[0]);
   const [callbackNotes, setCallbackNotes] = useState<string>('');
   const [confirmedTicketId, setConfirmedTicketId] = useState<string>('');
 
-  // AI Workspace Call Lifecycle State
-  const [callPhase, setCallPhase] = useState<'dialing' | 'connected' | 'ended'>('connected');
-  const [inputText, setInputText] = useState<string>('');
+  // Call Pacing & Turn-Taking State Machine:
+  // 'dialing' -> 'ai_greeting' -> 'client_turn' -> 'ai_responding' -> 'ended'
+  const [callTurnStage, setCallTurnStage] = useState<
+    'dialing' | 'ai_greeting' | 'client_turn' | 'ai_responding' | 'ended'
+  >('dialing');
+
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-  const [localCaptions, setLocalCaptions] = useState<
-    Array<{ id: string; speaker: 'customer' | 'agent'; text: string; time: string }>
+  const [liveTranscript, setLiveTranscript] = useState<
+    Array<{ id: string; speaker: 'client' | 'ai'; text: string; time: string }>
   >([]);
   const [savedRecentCall, setSavedRecentCall] = useState<RecentCall | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const captionsEndRef = useRef<HTMLDivElement | null>(null);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const stageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize or reset when customer changes
   useEffect(() => {
@@ -103,15 +106,15 @@ export const CustomerCallbackModal: React.FC = () => {
           : 'Client requested callback.'
       );
       setElapsedSeconds(0);
-      setCallPhase('connected');
+      setCallTurnStage('dialing');
       setSavedRecentCall(null);
-      setLocalCaptions([]);
+      setLiveTranscript([]);
     }
   }, [isCallbackModalOpen, callbackCustomer]);
 
-  // Session timer when in connected AI workspace
+  // Session timer when call is active
   useEffect(() => {
-    if (step === 'ai_workspace' && callPhase === 'connected') {
+    if (step === 'ai_workspace' && callTurnStage !== 'dialing' && callTurnStage !== 'ended') {
       timerRef.current = setInterval(() => {
         setElapsedSeconds((prev) => prev + 1);
       }, 1000);
@@ -126,27 +129,41 @@ export const CustomerCallbackModal: React.FC = () => {
         clearInterval(timerRef.current);
       }
     };
-  }, [step, callPhase]);
+  }, [step, callTurnStage]);
 
-  // Sync Gemini Live turns into local captions
+  // Sync Gemini Live turns into live transcript
   useEffect(() => {
     if (step === 'ai_workspace' && turns.length > 0) {
       const mapped = turns.map((t) => ({
         id: t.id,
-        speaker: (t.speaker === 'user' ? 'customer' : 'agent') as 'customer' | 'agent',
+        speaker: (t.speaker === 'user' ? 'client' : 'ai') as 'client' | 'ai',
         text: t.text,
         time: t.timestamp
       }));
-      setLocalCaptions(mapped);
-    }
-  }, [turns, step]);
+      setLiveTranscript(mapped);
 
-  // Auto-scroll captions to bottom
-  useEffect(() => {
-    if (captionsEndRef.current) {
-      captionsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      // If AI just finished answering, hand the floor back to the client!
+      const lastTurn = turns[turns.length - 1];
+      if (lastTurn && lastTurn.speaker === 'assistant' && !isAiSpeaking && !isAiThinking) {
+        setCallTurnStage('client_turn');
+      }
     }
-  }, [localCaptions, isAiThinking, userTranscript, callPhase]);
+  }, [turns, step, isAiSpeaking, isAiThinking]);
+
+  // Auto-scroll live transcript to bottom
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [liveTranscript, isAiThinking, userTranscript, callTurnStage]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (stageTimeoutRef.current) clearTimeout(stageTimeoutRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   if (!isCallbackModalOpen || !callbackCustomer) {
     return null;
@@ -169,7 +186,7 @@ export const CustomerCallbackModal: React.FC = () => {
     setStep('human_form');
   };
 
-  // Immediate dial by employee
+  // Immediate direct call by employee
   const handleDirectDialByEmployee = () => {
     resolveMissedCall(callbackCustomer.id);
 
@@ -224,53 +241,66 @@ export const CustomerCallbackModal: React.FC = () => {
   // Step 1: Employee chooses "Ask AI Agent to call back and enquire"
   const handleSelectAiAgent = async () => {
     setStep('ai_workspace');
-    setCallPhase('dialing');
+    setCallTurnStage('dialing');
     setElapsedSeconds(0);
 
-    // 1. Begin live session
+    // 1. Establish session
     try {
       await startSession();
     } catch (e) {
       console.warn('[CustomerCallbackModal] Live session start error (fallback active):', e);
     }
 
-    // 2. Simulate ringing phase (1.2s) then client answers
-    setTimeout(() => {
-      setCallPhase('connected');
+    // 2. Phone Call Sequence: Ringing (1.2s) -> Client answers -> AI speaks introduction
+    stageTimeoutRef.current = setTimeout(() => {
+      setCallTurnStage('ai_greeting');
 
-      // AI Agent opens the call upon pickup
       const customerFirstName = callbackCustomer.name.split(' ')[0] || 'there';
-      const greetingText = `Hello ${customerFirstName}! I'm calling from The Sleep Company and OnGround to follow up on your missed call. We noticed you reached out earlier regarding our SmartGRID mattresses. How can I assist you with availability, prices, or store details today?`;
+      const greetingText = `Hello ${customerFirstName}! I'm calling from The Sleep Company following up on your missed call. You previously enquired about our SmartGRID mattresses. How can I assist you with availability or pricing today?`;
 
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      setLocalCaptions([
+      setLiveTranscript([
         {
-          id: 'greeting-agent',
-          speaker: 'agent',
+          id: 'ai-greeting',
+          speaker: 'ai',
           text: greetingText,
           time: nowStr
         }
       ]);
 
       speakAnswer(greetingText);
+
+      // Hand floor over to client after AI finishes speaking (~3.5s)
+      stageTimeoutRef.current = setTimeout(() => {
+        setCallTurnStage('client_turn');
+      }, 3600);
     }, 1200);
   };
 
-  // Client responds in AI Workspace
-  const handleSendPrompt = async (textToSend?: string) => {
-    const query = (textToSend || inputText).trim();
-    if (!query) return;
+  // Client speaks (via microphone or simulated client voice utterance)
+  const handleClientUtterance = async (clientSpeech: string) => {
+    if (callTurnStage === 'dialing' || callTurnStage === 'ai_greeting' || isAiThinking) {
+      return; // Client cannot interrupt while AI is introducing the call
+    }
 
-    setInputText('');
-    await askQuestion(query);
+    setCallTurnStage('ai_responding');
+
+    // Feed client utterance into AI analysis and live speech turns
+    await askQuestion(clientSpeech);
+
+    // Once AI has spoken answer, stage will transition back to client_turn via turns sync
   };
 
   // End AI Conversation
   const handleEndAiConversation = () => {
     stopSpeaking();
     endSession();
-    setCallPhase('ended');
+    setCallTurnStage('ended');
+
+    if (stageTimeoutRef.current) {
+      clearTimeout(stageTimeoutRef.current);
+    }
 
     const formattedDur = `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
     const nowTimeStr = `Today ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -286,8 +316,8 @@ export const CustomerCallbackModal: React.FC = () => {
       sopScore: 96,
       greetingPassed: true,
       notes: `AI Outbound Callback: AI Agent called client on behalf of Arvind Rajan. Handled product enquiry and verified stock.`,
-      transcript: localCaptions.map((c) => ({
-        speaker: c.speaker === 'customer' ? `Client (${callbackCustomer.name})` : 'AI Agent (The Sleep Company)',
+      transcript: liveTranscript.map((c) => ({
+        speaker: c.speaker === 'client' ? `Client (${callbackCustomer.name})` : 'AI Agent (The Sleep Company)',
         text: c.text,
         time: c.time
       }))
@@ -306,7 +336,7 @@ export const CustomerCallbackModal: React.FC = () => {
     closeCallbackModal();
   };
 
-  // Dynamic Audio Waveform computation
+  // Dynamic Audio Waveform
   const renderWaveform = () => {
     const barCount = 14;
     return (
@@ -315,18 +345,18 @@ export const CustomerCallbackModal: React.FC = () => {
           let height = 8;
           let colorClass = styles.waveBar;
 
-          if (isAiSpeaking) {
-            // AI is speaking response
+          if (isAiSpeaking || callTurnStage === 'ai_greeting') {
+            // AI is speaking
             const wave = Math.sin((idx + Date.now() / 150) * 0.8);
             height = Math.max(10, Math.floor(25 + wave * 22));
             colorClass = `${styles.waveBar} ${styles.waveBarActiveBlue}`;
           } else if (voiceActivityState === 'VOICE_DETECTED' || audioLevel > 5) {
-            // Customer speaking into mic
+            // Client is speaking into mic
             const dynamicScale = Math.min(50, Math.max(12, (audioLevel / 100) * 55 + (idx % 3) * 6));
             height = dynamicScale;
             colorClass = `${styles.waveBar} ${styles.waveBarActiveGreen}`;
-          } else if (voiceActivityState === 'LISTENING' && callPhase === 'connected') {
-            // Ambient breathing
+          } else if (callTurnStage === 'client_turn') {
+            // Client line open ambient
             height = 8 + (idx % 4) * 3;
             colorClass = `${styles.waveBar} ${styles.waveBarActiveGreen}`;
           }
@@ -369,7 +399,7 @@ export const CustomerCallbackModal: React.FC = () => {
             <div>
               <h2 className={styles.headerTitle}>
                 {step === 'ai_workspace'
-                  ? `AI Outbound Callback · ${callbackCustomer.name}`
+                  ? `AI Phone Call · ${callbackCustomer.name}`
                   : step === 'human_form'
                   ? 'Call Client by Yourself'
                   : step === 'human_confirmed'
@@ -481,11 +511,11 @@ export const CustomerCallbackModal: React.FC = () => {
                 <div className={styles.optionHeaderRow}>
                   <h3 className={styles.optionTitle}>Ask AI Agent to call back and enquire</h3>
                   <span className={`${styles.optionBadge} ${styles.optionBadgeAi}`}>
-                    Automated AI Outbound · Live Voice & Captions
+                    Automated Phone Call · Voice & Audio Transcript
                   </span>
                 </div>
                 <p className={styles.optionDesc}>
-                  Delegate the call to the OnGround AI Agent. The AI dials the client, introduces itself upon pickup, enquires about their mattress interest, listens to their questions, and guides them throughout the call with live captions.
+                  Delegate the call to the OnGround AI Agent. The AI dials the client, gives an opening introduction upon pickup, listens to what the client asks, and answers with verified inventory.
                 </p>
               </div>
               <ArrowRight size={20} className={styles.optionArrow} />
@@ -662,7 +692,10 @@ export const CustomerCallbackModal: React.FC = () => {
         )}
 
         {/* ====================================================
-            STEP 2B: TWO-PANEL WORKSPACE (AI CALLS CLIENT)
+            STEP 2B: TWO-PANEL WORKSPACE (AI PHONE CALL CONSOLE)
+            Left: Live Outbound Call Telephony
+            Right: Live Audio Call Recording & Speech Transcript
+            (NO chatbox, pure voice interaction)
             ==================================================== */}
         {step === 'ai_workspace' && (
           <>
@@ -672,19 +705,19 @@ export const CustomerCallbackModal: React.FC = () => {
                 className={`${styles.mobileTabBtn} ${mobileTab === 'call' ? styles.mobileTabBtnActive : ''}`}
                 onClick={() => setMobileTab('call')}
               >
-                Live Call Controls
+                Live Telephony Controls
               </button>
               <button
-                className={`${styles.mobileTabBtn} ${mobileTab === 'agent' ? styles.mobileTabBtnActive : ''}`}
-                onClick={() => setMobileTab('agent')}
+                className={`${styles.mobileTabBtn} ${mobileTab === 'transcript' ? styles.mobileTabBtnActive : ''}`}
+                onClick={() => setMobileTab('transcript')}
               >
-                AI Agent & Captions
+                Live Speech Transcript
               </button>
             </div>
 
             <div className={styles.workspaceLayout}>
               {/* ----------------------------------------------------
-                  LEFT PANEL: LIVE OUTBOUND CALL
+                  LEFT INTERFACE: LIVE OUTBOUND TELEPHONY
                   ---------------------------------------------------- */}
               <div className={`${styles.leftCallPanel} ${mobileTab === 'call' ? styles.showMobileLeft : ''}`}>
                 <div>
@@ -715,60 +748,56 @@ export const CustomerCallbackModal: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Call Status & Waveform Block */}
+                  {/* Telephony Status & Waveform Block */}
                   <div className={styles.callStatusBlock}>
                     <div
                       className={`${styles.statusPill} ${
-                        callPhase === 'dialing'
+                        callTurnStage === 'dialing'
                           ? styles.statusPillConnecting
-                          : errorMessage
-                          ? styles.statusPillError
-                          : isAiSpeaking
+                          : callTurnStage === 'ai_greeting' || isAiSpeaking
                           ? styles.statusPillSpeaking
-                          : isAiThinking
+                          : callTurnStage === 'ai_responding' || isAiThinking
                           ? styles.statusPillConnecting
-                          : voiceActivityState === 'VOICE_DETECTED'
+                          : callTurnStage === 'client_turn'
                           ? styles.statusPillConnected
                           : styles.statusPillListening
                       }`}
                     >
                       <span className={styles.pulseDot} />
                       <span>
-                        {callPhase === 'dialing'
+                        {callTurnStage === 'dialing'
                           ? 'Dialling Client · Ringing...'
-                          : errorMessage
-                          ? 'Connection Alert'
+                          : callTurnStage === 'ai_greeting'
+                          ? 'AI Speaking Greeting'
+                          : isAiThinking || callTurnStage === 'ai_responding'
+                          ? 'AI Checking Stock'
                           : isAiSpeaking
-                          ? 'AI Agent Speaking'
-                          : isAiThinking
-                          ? 'Checking Inventory'
+                          ? 'AI Speaking Answer'
                           : voiceActivityState === 'VOICE_DETECTED'
                           ? 'Client Voice Detected'
-                          : isMuted
-                          ? 'Microphone Muted'
-                          : 'Listening to Client'}
+                          : 'Client Turn · Listening'}
                       </span>
                     </div>
 
                     <div className={styles.sessionTimer}>
-                      {callPhase === 'dialing' ? '00:00' : formatTimer(elapsedSeconds)}
+                      {callTurnStage === 'dialing' ? '00:00' : formatTimer(elapsedSeconds)}
                     </div>
 
-                    {/* Measured Real Audio Waveform */}
+                    {/* Dynamic Real Audio Waveform */}
                     {renderWaveform()}
 
                     <p className={styles.sessionStateText}>
-                      {callPhase === 'dialing'
-                        ? `Placing outbound call to client ${callbackCustomer.name} (${callbackCustomer.phone})...`
-                        : errorMessage
-                        ? errorMessage
-                        : isAiSpeaking
-                        ? 'AI agent is speaking verified response over browser voice engine.'
+                      {callTurnStage === 'dialing'
+                        ? `Outbound call connecting to client ${callbackCustomer.name} (${callbackCustomer.phone})...`
+                        : callTurnStage === 'ai_greeting'
+                        ? 'AI agent is introducing the call to the client over voice...'
                         : isAiThinking
-                        ? 'AI agent is consulting verified warehouse inventory...'
+                        ? 'AI agent is consulting verified inventory...'
+                        : isAiSpeaking
+                        ? 'AI agent is speaking factual answer aloud over voice...'
                         : voiceActivityState === 'VOICE_DETECTED'
-                        ? 'Client speech detected on microphone.'
-                        : 'Call active · Client can speak or use simulation responses below.'}
+                        ? 'Client speech detected on line.'
+                        : 'Line is open · Client can speak into microphone or select voice trigger below.'}
                     </p>
                   </div>
                 </div>
@@ -797,157 +826,187 @@ export const CustomerCallbackModal: React.FC = () => {
 
                   <button className={styles.btnEndCall} onClick={handleEndAiConversation}>
                     <PhoneOff size={18} />
-                    <span>End Conversation</span>
+                    <span>End Phone Call</span>
                   </button>
                 </div>
               </div>
 
               {/* ----------------------------------------------------
-                  RIGHT PANEL: AI AGENT & LIVE CAPTIONS
+                  RIGHT INTERFACE: LIVE AUDIO CALL RECORDING & TRANSCRIPT
+                  (Pure speech transcript, zero chatbox)
                   ---------------------------------------------------- */}
-              <div className={`${styles.rightAgentPanel} ${mobileTab === 'agent' ? styles.showMobileRight : ''}`}>
-                {/* Agent Header */}
+              <div
+                className={`${styles.rightAgentPanel} ${
+                  mobileTab === 'transcript' ? styles.showMobileRight : ''
+                }`}
+              >
+                {/* Header */}
                 <div className={styles.agentHeader}>
                   <div className={styles.agentHeaderLeft}>
-                    <Sparkles size={18} color="#60a5fa" />
+                    <FileText size={18} color="#34d399" />
                     <h3 className={styles.agentHeaderTitle}>
-                      <span>AI Agent Assist</span>
-                      <span className={styles.modelBadge}>Live Dialogue Captions & Inventory Tools</span>
+                      <span>Live Call Audio Transcript</span>
+                      <span className={styles.modelBadge}>Automated Speech Recognition</span>
                     </h3>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '12px', color: '#64748b' }}>
-                      {localCaptions.length} dialogue turns
+                      {liveTranscript.length} dialogue turns recorded
                     </span>
                   </div>
                 </div>
 
-                {/* Chronological Captions Stream */}
+                {/* Speech Transcript Stream */}
                 <div className={styles.captionsArea}>
-                  {callPhase === 'dialing' && (
+                  {callTurnStage === 'dialing' && (
                     <div className={styles.liveThinkingCard}>
                       <Radio size={14} />
-                      <span>Ringing client {callbackCustomer.name}... Connecting audio stream...</span>
+                      <span>Ringing client {callbackCustomer.name}... Awaiting pickup...</span>
                     </div>
                   )}
 
-                  {localCaptions.map((turn) => (
+                  {liveTranscript.map((turn) => (
                     <div
                       key={turn.id}
                       className={`${styles.turnItem} ${
-                        turn.speaker === 'customer' ? styles.turnUser : styles.turnAgent
+                        turn.speaker === 'client' ? styles.turnUser : styles.turnAgent
                       }`}
                     >
                       <div className={styles.turnMeta}>
                         <span>
-                          {turn.speaker === 'customer'
-                            ? `Client (${callbackCustomer.name})`
-                            : 'AI Agent (The Sleep Company)'}
+                          {turn.speaker === 'client'
+                            ? `Client: ${callbackCustomer.name}`
+                            : 'AI Phone Agent (The Sleep Company)'}
                         </span>
                         <span>•</span>
                         <span>{turn.time}</span>
                       </div>
                       <div
                         className={`${styles.turnBubble} ${
-                          turn.speaker === 'customer'
+                          turn.speaker === 'client'
                             ? styles.turnBubbleUser
                             : styles.turnBubbleAgent
                         }`}
                       >
                         {turn.text}
-                        {turn.speaker === 'agent' && (
-                          <div className={styles.spokenTag}>
-                            <Volume2 size={12} />
-                            <span>Spoken aloud to client via voice engine</span>
-                          </div>
-                        )}
+                        <div className={styles.spokenTag}>
+                          <Volume2 size={12} />
+                          <span>
+                            {turn.speaker === 'client'
+                              ? 'Spoken by client over phone'
+                              : 'Spoken by AI agent over phone'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
 
-                  {/* Live speech transcription indicator while customer speaks */}
+                  {/* Real-time speech transcription card while speaking */}
                   {userTranscript && (
                     <div className={styles.liveTranscribingCard}>
                       <Mic size={14} />
                       <span>
-                        Transcribing client speech: &quot;{userTranscript}&quot;
+                        Transcribing client spoken voice: &quot;{userTranscript}&quot;
                       </span>
                     </div>
                   )}
 
-                  {/* Processing indicator when AI is thinking */}
+                  {/* Processing indicator when AI is querying verified tools */}
                   {isAiThinking && (
                     <div className={styles.liveThinkingCard}>
                       <Sparkles size={14} />
-                      <span>AI Agent is checking verified warehouse stock & catalogue...</span>
+                      <span>Consulting verified warehouse inventory...</span>
                     </div>
                   )}
 
-                  {/* Live speaking indicator */}
+                  {/* Speaking indicator */}
                   {isAiSpeaking && (
                     <div className={styles.liveSpeakingCard}>
                       <Volume2 size={14} />
-                      <span>Speaking answer aloud to client...</span>
+                      <span>AI speaking response aloud to client...</span>
                     </div>
                   )}
 
-                  <div ref={captionsEndRef} />
+                  <div ref={transcriptEndRef} />
                 </div>
 
-                {/* Suggested Client Responses / Inquiry Chips */}
-                <div className={styles.chipsContainer}>
-                  {SUGGESTED_CLIENT_RESPONSES.map((prompt) => (
-                    <button
-                      key={prompt}
-                      className={styles.chipBtn}
-                      onClick={() => handleSendPrompt(prompt)}
-                      disabled={isAiThinking || callPhase === 'dialing'}
-                    >
-                      <Sparkles size={12} color="#60a5fa" />
-                      <span>{prompt}</span>
-                    </button>
-                  ))}
-                </div>
+                {/* PURE VOICE TURN DOCK (NO CHAT SECTION) */}
+                <div className={styles.voiceTurnDock}>
+                  {/* Real-time Turn Status Bar */}
+                  <div className={styles.voiceTurnStatusBar}>
+                    <div className={styles.voiceTurnStatusLeft}>
+                      <span className={styles.pulseDot} />
+                      <span
+                        className={
+                          callTurnStage === 'dialing'
+                            ? styles.voiceTurnTextAmber
+                            : callTurnStage === 'ai_greeting' || isAiSpeaking
+                            ? styles.voiceTurnTextPurple
+                            : styles.voiceTurnTextGreen
+                        }
+                      >
+                        {callTurnStage === 'dialing'
+                          ? 'Outbound Call Connecting...'
+                          : callTurnStage === 'ai_greeting'
+                          ? 'AI is Speaking Opening Greeting (Client Listening)'
+                          : isAiSpeaking
+                          ? 'AI is Speaking Answer Aloud'
+                          : isAiThinking
+                          ? 'AI is Checking Stock...'
+                          : 'Line Open · Client Can Speak Now'}
+                      </span>
+                    </div>
 
-                {/* Bottom Input Row */}
-                <div className={styles.inputSection}>
-                  <button
-                    className={`${styles.micCircleBtn} ${
-                      voiceActivityState === 'VOICE_DETECTED' || voiceActivityState === 'LISTENING'
-                        ? styles.micCircleBtnListening
-                        : ''
-                    }`}
-                    onClick={() => {
-                      if (isMuted) toggleMute();
-                    }}
-                    title={isMuted ? 'Microphone muted - click to unmute' : 'Microphone active'}
-                  >
-                    {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-                  </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        className={styles.controlBtn}
+                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                        onClick={toggleMute}
+                      >
+                        {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
+                        <span>{isMuted ? 'Muted' : 'Mic Active'}</span>
+                      </button>
+                    </div>
+                  </div>
 
-                  <input
-                    type="text"
-                    className={styles.textInput}
-                    placeholder="Type client question (e.g. check stock, price, EMI, or delivery)..."
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSendPrompt();
-                      }
-                    }}
-                    disabled={callPhase === 'dialing'}
-                  />
+                  {/* Client Voice Utterance Triggers */}
+                  <div className={styles.voiceClientTriggersSection}>
+                    <div className={styles.triggersLabelRow}>
+                      <span>
+                        {callTurnStage === 'ai_greeting' || callTurnStage === 'dialing'
+                          ? 'Client cannot speak until AI completes greeting'
+                          : 'Client Spoken Voice Triggers (Microphone or Instant Utterance):'}
+                      </span>
+                      {callTurnStage === 'client_turn' && (
+                        <span style={{ color: '#34d399' }}>● Mic Ready</span>
+                      )}
+                    </div>
 
-                  <button
-                    className={styles.sendBtn}
-                    onClick={() => handleSendPrompt()}
-                    disabled={!inputText.trim() || isAiThinking || callPhase === 'dialing'}
-                    title="Send message"
-                  >
-                    <Send size={18} />
-                  </button>
+                    <div className={styles.voiceTriggersGrid}>
+                      {CLIENT_VOICE_UTTERANCES.map((utterance, idx) => (
+                        <button
+                          key={idx}
+                          className={styles.voiceTriggerBtn}
+                          onClick={() => handleClientUtterance(utterance)}
+                          disabled={
+                            callTurnStage === 'dialing' ||
+                            callTurnStage === 'ai_greeting' ||
+                            isAiThinking ||
+                            isAiSpeaking
+                          }
+                          title={
+                            callTurnStage === 'ai_greeting'
+                              ? 'Waiting for AI to finish speaking greeting'
+                              : `Simulate client saying: "${utterance}"`
+                          }
+                        >
+                          <Mic size={14} className={styles.voiceTriggerIcon} />
+                          <span>Client: &quot;{utterance}&quot;</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -962,9 +1021,9 @@ export const CustomerCallbackModal: React.FC = () => {
             <div className={styles.successIconCircle}>
               <CheckCircle2 size={36} />
             </div>
-            <h3 className={styles.confirmationTitle}>AI Call Completed & Logged</h3>
+            <h3 className={styles.confirmationTitle}>AI Phone Call Completed & Logged</h3>
             <p className={styles.confirmationSubtitle}>
-              The AI Voice Callback interaction has been persisted to Calling History and SOP Review.
+              The phone call interaction has been recorded and persisted to Calling History and SOP Review.
             </p>
 
             <div className={styles.confirmationDetailsCard}>
@@ -981,7 +1040,7 @@ export const CustomerCallbackModal: React.FC = () => {
               <div className={styles.confirmationDetailRow}>
                 <span className={styles.confirmationDetailLabel}>Captions Recorded</span>
                 <span className={styles.confirmationDetailValue}>
-                  {localCaptions.length} dialogue turns
+                  {liveTranscript.length} dialogue turns
                 </span>
               </div>
               <div className={styles.confirmationDetailRow}>
