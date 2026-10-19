@@ -142,3 +142,29 @@
 .dateFilterBtn:hover {
   background-color: rgba(255, 255, 255, 0.15);
 }
+
+.geminiVoiceBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(59, 130, 246, 0.25) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.geminiVoiceBtn:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.35) 0%, rgba(59, 130, 246, 0.4) 100%);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
+.geminiSparkleIcon {
+  color: #38bdf8;
+}

@@ -1,10 +1,12 @@
 import React from 'react';
-import { Bell, Calendar as CalendarIcon, Star } from 'lucide-react';
+import { Bell, Calendar as CalendarIcon, Star, Sparkles } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
+import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './Topbar.module.css';
 
 export const Topbar: React.FC = () => {
   const { agent, currentRoute, setCurrentRoute } = useAppState();
+  const { openModal, connectionState } = useGeminiLive();
 
   const handleDateClick = () => {
     setCurrentRoute('calendar');
@@ -20,6 +22,20 @@ export const Topbar: React.FC = () => {
 
       {/* User Controls & Status */}
       <div className={styles.userSection}>
+        {/* Customer Voice Assistant (Gemini Live) */}
+        <button
+          className={styles.geminiVoiceBtn}
+          onClick={openModal}
+          title="Launch Customer Voice Assistant (Gemini Live Multimodal Voice AI)"
+        >
+          <Sparkles size={14} className={styles.geminiSparkleIcon} />
+          <span>
+            {connectionState === 'LISTENING' || connectionState === 'SPEAKING'
+              ? 'Voice Assistant (Live)'
+              : 'Customer Voice Assistant'}
+          </span>
+        </button>
+
         {/* On Queue Indicator */}
         <div className={styles.queuePill}>
           <span className={styles.queueDot}></span>

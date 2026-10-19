@@ -10,6 +10,8 @@ import { CalendarView } from './components/calendar/CalendarView';
 import { PulseView } from './components/pulse/PulseView';
 import { LeadsModal } from './components/leads/LeadsModal';
 import { CallingModal } from './components/calling/CallingModal';
+import { GeminiLiveProvider } from './context/GeminiLiveContext';
+import { CustomerVoiceAssistantModal } from './components/geminiLive/CustomerVoiceAssistantModal';
 
 const AppContent: React.FC = () => {
   const { currentRoute } = useAppState();
@@ -58,6 +60,7 @@ const AppContent: React.FC = () => {
       {/* Global Overlays */}
       <LeadsModal />
       <CallingModal />
+      <CustomerVoiceAssistantModal />
     </div>
   );
 };
@@ -66,7 +69,9 @@ export const App: React.FC = () => {
   return (
     <AppStateProvider>
       <CallingProvider>
-        <AppContent />
+        <GeminiLiveProvider>
+          <AppContent />
+        </GeminiLiveProvider>
       </CallingProvider>
     </AppStateProvider>
   );

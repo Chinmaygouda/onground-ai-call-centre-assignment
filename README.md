@@ -72,6 +72,30 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 ### Engine 3: Click-to-Dial Phone Protocol
 - Integrated throughout customer telephone links with the selected demo phone number `+91 72041 04491` (`tel:+917204104491`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
 
+### Engine 4 (Mode 3): Gemini Live Voice Assistant with Synchronized Business Data
+- **Real-Time Multimodal Voice AI**: Connects to the official **Gemini Live API** (`gemini-3.8-live`, with dynamic server model discovery and automatic fallback chain to `gemini-3.1-flash-live-preview` and `gemini-2.5-flash-native-audio-preview-12-2025`) over a low-latency bidirectional WebSocket connection.
+- **Pure Microphone & Spoken Output**: Real-time microphone input is downsampled and streamed as raw 16kHz mono PCM (`audio/pcm;rate=16000`). AI responses are streamed back as 24kHz raw PCM chunks played through an `AudioContext` queue with instant interruption handling (`interrupted: true` drops queued buffers immediately). **No `window.speechSynthesis` substitution.**
+- **Zero-Secret Client Architecture (Ephemeral Tokens)**:
+  - `GEMINI_API_KEY` is strictly server-only, read from `.env` and **never** prefixed with `VITE_`.
+  - The server mints short-lived ephemeral auth tokens via `/api/gemini/token` with request rate-limiting (20 req/min) and strict session expiration.
+  - The browser client connects to `wss://generativelanguage.googleapis.com/...` using only the short-lived token.
+- **Single Source of Truth Business Data Provider (`IBusinessDataProvider`)**:
+  - The AI assistant is grounded in 9 official callable tools:
+    1. `searchProducts`: Searches verified products by category/keyword.
+    2. `getProductDetails`: Returns complete technical specifications, materials, warranty, and trial terms.
+    3. `getCurrentPrice`: Mandatory lookup before quoting prices, MRP, or discounts.
+    4. `getActiveOffers`: Returns active promotions, coupon codes (e.g. `FESTIVE1000`), and expiry dates.
+    5. `getEMIOptions`: Computes verified 0% No-Cost EMI plans with tenure and bank terms.
+    6. `getWarrantyPolicy`: Official 10-year peace-of-mind warranty details.
+    7. `getTrialAndReturnPolicy`: Official 100-night risk-free trial guidelines.
+    8. `getDeliveryAvailability`: Validates 6-digit Indian PIN codes and delivery SLAs.
+    9. `getApprovedFAQ`: Japanese patented SmartGRID material facts and doctor endorsements.
+  - **Zero Fabrication Guarantee**: The system refuses to invent unverified prices, stock, or policies. Invalid queries return explicit domain errors (`PRODUCT_NOT_FOUND`, `INVALID_PINCODE`, `SIZE_NOT_FOUND`).
+  - **Live Synchronization & Cache Invalidation (Requirement H & I)**:
+    - Shared singleton `businessDataProvider` invalidates caches on price mutations.
+    - Automatic semantic version increments (e.g., `2026.10.1` -> `2026.10.2`) with UTC audit timestamps.
+    - Integrated **Live Catalogue Synchronization Testing Bench** in the UI allows frontline reviewers to update product prices at runtime and immediately observe cache invalidation and version bumping.
+
 ---
 
 ## 4. Completed Requirements Checklist
