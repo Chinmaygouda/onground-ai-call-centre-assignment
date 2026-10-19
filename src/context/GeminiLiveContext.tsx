@@ -72,6 +72,9 @@ interface GeminiLiveContextType {
   askQuestion: (question: string) => Promise<void>;
   isVoiceOutputEnabled: boolean;
   toggleVoiceOutput: () => void;
+  sessionId: string;
+  speakAnswer: (text: string) => void;
+  stopSpeaking: () => void;
 
   // Live Data Sync & Mutation Test Harness
   products: VerifiedProduct[];
@@ -160,6 +163,18 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (err) {
       console.warn('[SpeechSynthesis] Failed to play utterance:', err);
     }
+  };
+
+  const [sessionId, setSessionId] = useState<string>(
+    () => 'live_' + Math.random().toString(36).substring(2, 10)
+  );
+
+  const stopSpeaking = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsAiSpeaking(false);
+    setAudioLevel(0);
   };
 
   // Live business data state
@@ -407,7 +422,9 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          question: query,
           message: query,
+          history: turns.slice(-6).map((t) => ({ speaker: t.speaker, text: t.text })),
           conversationHistory: historyPayload
         }),
         signal: controller.signal
@@ -473,6 +490,7 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIsAiThinking(false);
     setAudioLevel(0);
     setSessionDuration(0);
+    setSessionId('live_' + Math.random().toString(36).substring(2, 10));
 
     // Start session timer when connection succeeds
     if (timerRef.current) clearInterval(timerRef.current);
@@ -759,6 +777,9 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         askQuestion,
         isVoiceOutputEnabled,
         toggleVoiceOutput,
+        sessionId,
+        speakAnswer,
+        stopSpeaking,
         products,
         updateProductPrice,
         resetCatalog,

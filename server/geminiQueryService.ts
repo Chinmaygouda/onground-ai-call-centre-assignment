@@ -30,13 +30,19 @@ export const CANDIDATE_QUERY_MODELS = [
   'gemini-3.8-flash'
 ];
 
+export interface ConversationHistoryItem {
+  speaker: 'user' | 'assistant';
+  text: string;
+}
+
 /**
  * Execute a query with Gemini and verified multi-turn tool calling with automatic model fallback
  */
 export async function executeGeminiQuery(
   question: string,
   apiKey?: string,
-  model = 'gemini-3.5-flash-lite'
+  model = 'gemini-3.5-flash-lite',
+  history?: ConversationHistoryItem[]
 ): Promise<{ success: boolean; text: string; answer: string; toolsExecuted: ToolExecutionEvent[]; model: string }> {
   const activeKey = apiKey || process.env.GEMINI_API_KEY;
   if (!activeKey || activeKey === 'your_gemini_api_key_here' || activeKey.trim() === '') {
@@ -44,6 +50,14 @@ export async function executeGeminiQuery(
   }
 
   const ai = new GoogleGenAI({ apiKey: activeKey });
+
+  // Format valid prior history turns for multi-turn conversational context
+  const formattedHistory = (history || [])
+    .filter((h) => h.text && h.text.trim())
+    .map((h) => ({
+      role: h.speaker === 'user' ? 'user' : 'model',
+      parts: [{ text: h.text }]
+    }));
 
   // Prioritize requested model, then fall back through candidate chain if rate limit or quota is hit
   const modelsToTry = [model, ...CANDIDATE_QUERY_MODELS.filter((m) => m !== model)];
@@ -54,6 +68,7 @@ export async function executeGeminiQuery(
       const toolsExecuted: ToolExecutionEvent[] = [];
       const chat = ai.chats.create({
         model: currentModel,
+        history: formattedHistory.length > 0 ? formattedHistory : undefined,
         config: {
           systemInstruction: {
             parts: [{ text: GEMINI_LIVE_SYSTEM_INSTRUCTION }]
@@ -176,7 +191,8 @@ export async function handleGeminiQueryRequest(
         return;
       }
 
-      const result = await executeGeminiQuery(question, activeKey, model);
+      const history = Array.isArray(parsed.history) ? parsed.history : undefined;
+      const result = await executeGeminiQuery(question, activeKey, model, history);
 
       const payload: QueryResponsePayload = {
         success: true,
