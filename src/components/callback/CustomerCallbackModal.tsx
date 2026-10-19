@@ -91,9 +91,14 @@ export const CustomerCallbackModal: React.FC = () => {
   >([]);
   const [savedRecentCall, setSavedRecentCall] = useState<RecentCall | null>(null);
 
+  // Client audible voice speech state
+  const [isClientSpeaking, setIsClientSpeaking] = useState<boolean>(false);
+  const [clientSpeakingText, setClientSpeakingText] = useState<string>('');
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const stageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const greetingRef = useRef<{ id: string; speaker: 'ai'; text: string; time: string } | null>(null);
 
   // Initialize or reset when customer changes
   useEffect(() => {
@@ -107,8 +112,11 @@ export const CustomerCallbackModal: React.FC = () => {
       );
       setElapsedSeconds(0);
       setCallTurnStage('dialing');
+      setIsClientSpeaking(false);
+      setClientSpeakingText('');
       setSavedRecentCall(null);
       setLiveTranscript([]);
+      greetingRef.current = null;
     }
   }, [isCallbackModalOpen, callbackCustomer]);
 
@@ -131,7 +139,7 @@ export const CustomerCallbackModal: React.FC = () => {
     };
   }, [step, callTurnStage]);
 
-  // Sync Gemini Live turns into live transcript
+  // Sync Gemini Live turns into live transcript while preserving greeting
   useEffect(() => {
     if (step === 'ai_workspace' && turns.length > 0) {
       const mapped = turns.map((t) => ({
@@ -140,26 +148,40 @@ export const CustomerCallbackModal: React.FC = () => {
         text: t.text,
         time: t.timestamp
       }));
-      setLiveTranscript(mapped);
+
+      const fullTranscript = greetingRef.current
+        ? [greetingRef.current, ...mapped]
+        : mapped;
+
+      setLiveTranscript(fullTranscript);
 
       // If AI just finished answering, hand the floor back to the client!
       const lastTurn = turns[turns.length - 1];
-      if (lastTurn && lastTurn.speaker === 'assistant' && !isAiSpeaking && !isAiThinking) {
+      if (
+        lastTurn &&
+        lastTurn.speaker === 'assistant' &&
+        !isAiSpeaking &&
+        !isAiThinking &&
+        !isClientSpeaking
+      ) {
         setCallTurnStage('client_turn');
       }
     }
-  }, [turns, step, isAiSpeaking, isAiThinking]);
+  }, [turns, step, isAiSpeaking, isAiThinking, isClientSpeaking]);
 
   // Auto-scroll live transcript to bottom
   useEffect(() => {
     if (transcriptEndRef.current) {
       transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [liveTranscript, isAiThinking, userTranscript, callTurnStage]);
+  }, [liveTranscript, isAiThinking, userTranscript, callTurnStage, isClientSpeaking]);
 
-  // Cleanup timers on unmount
+  // Cleanup timers and speech on unmount
   useEffect(() => {
     return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
       if (stageTimeoutRef.current) clearTimeout(stageTimeoutRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -176,6 +198,107 @@ export const CustomerCallbackModal: React.FC = () => {
   };
 
   const { telUri } = normalizePhoneNumber(callbackCustomer.phone);
+
+  // ==========================================
+  // AUDIO & VOICE UTTERANCE HELPERS
+  // ==========================================
+
+  // Play realistic telephone tones via Web Audio API
+  const playTelephoneTone = (freq1: number, freq2: number, durationMs: number, gainVal: number = 0.04) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.frequency.value = freq1;
+      osc2.frequency.value = freq2;
+
+      gain.gain.setValueAtTime(gainVal, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start();
+      osc2.start();
+
+      osc1.stop(ctx.currentTime + durationMs / 1000);
+      osc2.stop(ctx.currentTime + durationMs / 1000);
+    } catch {
+      // Audio context might be restricted
+    }
+  };
+
+  // Dedicated audible voice speaker for the client (uses distinct pitch and client voice profile)
+  const speakClientVoice = (text: string, onEnd?: () => void) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      if (onEnd) onEnd();
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const cleanText = text
+        .replace(/[*_#`~[\]]/g, '')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/₹\s*/g, 'Rupees ');
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 1.0;
+      utterance.pitch = 0.88; // Distinct customer tone (deeper than AI assistant)
+      utterance.lang = 'en-IN';
+
+      const voices = window.speechSynthesis.getVoices();
+      const clientVoice =
+        voices.find(
+          (v) =>
+            v.lang.startsWith('en') &&
+            (v.name.includes('David') ||
+              v.name.includes('Mark') ||
+              v.name.includes('George') ||
+              v.name.includes('Guy') ||
+              v.name.includes('Male'))
+        ) ||
+        voices.find((v) => v.lang.startsWith('en') && !v.name.includes('Google') && !v.name.includes('Zira')) ||
+        voices[0];
+
+      if (clientVoice) {
+        utterance.voice = clientVoice;
+      }
+
+      utterance.onstart = () => {
+        setIsClientSpeaking(true);
+        setClientSpeakingText(text);
+      };
+
+      utterance.onend = () => {
+        setIsClientSpeaking(false);
+        setClientSpeakingText('');
+        if (onEnd) onEnd();
+      };
+
+      utterance.onerror = (e) => {
+        console.warn('[speakClientVoice] Notice:', e);
+        setIsClientSpeaking(false);
+        setClientSpeakingText('');
+        if (onEnd) onEnd();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn('[speakClientVoice] Error:', err);
+      setIsClientSpeaking(false);
+      setClientSpeakingText('');
+      if (onEnd) onEnd();
+    }
+  };
 
   // ==========================================
   // ACTION HANDLERS
@@ -243,57 +366,129 @@ export const CustomerCallbackModal: React.FC = () => {
     setStep('ai_workspace');
     setCallTurnStage('dialing');
     setElapsedSeconds(0);
+    setIsClientSpeaking(false);
+    setClientSpeakingText('');
+    greetingRef.current = null;
 
-    // 1. Establish session
+    // 1. Play realistic telephone ringing tone
+    playTelephoneTone(440, 480, 1100, 0.05);
+
     try {
       await startSession();
     } catch (e) {
       console.warn('[CustomerCallbackModal] Live session start error (fallback active):', e);
     }
 
-    // 2. Phone Call Sequence: Ringing (1.2s) -> Client answers -> AI speaks introduction
+    // 2. Phone Call Sequence: Ringing (1.2s) -> Client answers -> AI speaks greeting
     stageTimeoutRef.current = setTimeout(() => {
+      // Connect chime
+      playTelephoneTone(850, 1200, 120, 0.04);
       setCallTurnStage('ai_greeting');
 
       const customerFirstName = callbackCustomer.name.split(' ')[0] || 'there';
       const greetingText = `Hello ${customerFirstName}! I'm calling from The Sleep Company following up on your missed call. You previously enquired about our SmartGRID mattresses. How can I assist you with availability or pricing today?`;
-
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      setLiveTranscript([
-        {
-          id: 'ai-greeting',
-          speaker: 'ai',
-          text: greetingText,
-          time: nowStr
-        }
-      ]);
+      const greetingRecord = {
+        id: 'ai-greeting',
+        speaker: 'ai' as const,
+        text: greetingText,
+        time: nowStr
+      };
+      greetingRef.current = greetingRecord;
+      setLiveTranscript([greetingRecord]);
 
       speakAnswer(greetingText);
 
-      // Hand floor over to client after AI finishes speaking (~3.5s)
+      // 3. Hand floor over to client after AI finishes speaking (~4.2s) -> Client speaks automatically!
       stageTimeoutRef.current = setTimeout(() => {
-        setCallTurnStage('client_turn');
-      }, 3600);
+        triggerAutomaticClientSpeech();
+      }, 4200);
     }, 1200);
   };
 
-  // Client speaks (via microphone or simulated client voice utterance)
-  const handleClientUtterance = async (clientSpeech: string) => {
-    if (callTurnStage === 'dialing' || callTurnStage === 'ai_greeting' || isAiThinking) {
-      return; // Client cannot interrupt while AI is introducing the call
+  // Client speaks automatically upon greeting completion
+  const triggerAutomaticClientSpeech = () => {
+    if (!callbackCustomer) return;
+
+    setCallTurnStage('client_turn');
+
+    // Customer natural voice inquiry tailored to customer record
+    let clientQuestion = 'Yeah, I was inquiring about the SmartGRID Ortho mattress. Is Queen size in stock?';
+    if (callbackCustomer.name.includes('Faizan') || callbackCustomer.expectedValue === 24990) {
+      clientQuestion = 'Yeah, I was inquiring about the SmartGRID Ortho mattress. Is Queen size in stock?';
+    } else if (callbackCustomer.name.includes('Kavitha')) {
+      clientQuestion = 'Yeah, I was calling to check the current festive discounts on the SmartGRID Luxe King mattress.';
+    } else if (callbackCustomer.name.includes('Divya')) {
+      clientQuestion = 'Hello, yes I was inquiring about the Elevate Adjustable Bed quote and delivery options.';
+    } else if (callbackCustomer.name.includes('Ritu')) {
+      clientQuestion = 'Hi, I was looking for the SmartGRID mattress and wanted to check if 0% interest EMI is available.';
     }
 
-    setCallTurnStage('ai_responding');
+    const clientTurnTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Feed client utterance into AI analysis and live speech turns
-    await askQuestion(clientSpeech);
+    // Show customer's dialogue in transcript immediately
+    const clientTurnRecord = {
+      id: `client-turn-${Date.now()}`,
+      speaker: 'client' as const,
+      text: clientQuestion,
+      time: clientTurnTime
+    };
 
-    // Once AI has spoken answer, stage will transition back to client_turn via turns sync
+    setLiveTranscript((prev) => {
+      const base = greetingRef.current ? [greetingRef.current] : [];
+      const others = prev.filter((p) => p.id !== 'ai-greeting');
+      return [...base, ...others, clientTurnRecord];
+    });
+
+    // Speak customer's voice aloud through speakers!
+    speakClientVoice(clientQuestion, async () => {
+      // Once customer finishes speaking:
+      setCallTurnStage('ai_responding');
+
+      // AI executes checkProductStock tool and speaks response back!
+      await askQuestion(clientQuestion);
+    });
+  };
+
+  // Client speaks (via simulated client voice trigger or microphone)
+  const handleClientUtterance = (clientSpeech: string) => {
+    if (
+      callTurnStage === 'dialing' ||
+      callTurnStage === 'ai_greeting' ||
+      isAiThinking ||
+      isAiSpeaking ||
+      isClientSpeaking
+    ) {
+      return;
+    }
+
+    setCallTurnStage('client_turn');
+    const clientTurnTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const clientTurnRecord = {
+      id: `client-turn-${Date.now()}`,
+      speaker: 'client' as const,
+      text: clientSpeech,
+      time: clientTurnTime
+    };
+
+    setLiveTranscript((prev) => [...prev, clientTurnRecord]);
+
+    // Speak the client's voice aloud first so the interaction is heard!
+    speakClientVoice(clientSpeech, async () => {
+      setCallTurnStage('ai_responding');
+      await askQuestion(clientSpeech);
+    });
   };
 
   // End AI Conversation
   const handleEndAiConversation = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsClientSpeaking(false);
+    setClientSpeakingText('');
     stopSpeaking();
     endSession();
     setCallTurnStage('ended');
@@ -350,6 +545,11 @@ export const CustomerCallbackModal: React.FC = () => {
             const wave = Math.sin((idx + Date.now() / 150) * 0.8);
             height = Math.max(10, Math.floor(25 + wave * 22));
             colorClass = `${styles.waveBar} ${styles.waveBarActiveBlue}`;
+          } else if (isClientSpeaking) {
+            // Client is speaking audibly
+            const wave = Math.sin((idx + Date.now() / 110) * 0.9);
+            height = Math.max(12, Math.floor(28 + wave * 22));
+            colorClass = `${styles.waveBar} ${styles.waveBarActiveGreen}`;
           } else if (voiceActivityState === 'VOICE_DETECTED' || audioLevel > 5) {
             // Client is speaking into mic
             const dynamicScale = Math.min(50, Math.max(12, (audioLevel / 100) * 55 + (idx % 3) * 6));
@@ -756,6 +956,8 @@ export const CustomerCallbackModal: React.FC = () => {
                           ? styles.statusPillConnecting
                           : callTurnStage === 'ai_greeting' || isAiSpeaking
                           ? styles.statusPillSpeaking
+                          : isClientSpeaking
+                          ? styles.statusPillConnected
                           : callTurnStage === 'ai_responding' || isAiThinking
                           ? styles.statusPillConnecting
                           : callTurnStage === 'client_turn'
@@ -769,6 +971,8 @@ export const CustomerCallbackModal: React.FC = () => {
                           ? 'Dialling Client · Ringing...'
                           : callTurnStage === 'ai_greeting'
                           ? 'AI Speaking Greeting'
+                          : isClientSpeaking
+                          ? `Client Speaking (${callbackCustomer.name})`
                           : isAiThinking || callTurnStage === 'ai_responding'
                           ? 'AI Checking Stock'
                           : isAiSpeaking
@@ -791,6 +995,8 @@ export const CustomerCallbackModal: React.FC = () => {
                         ? `Outbound call connecting to client ${callbackCustomer.name} (${callbackCustomer.phone})...`
                         : callTurnStage === 'ai_greeting'
                         ? 'AI agent is introducing the call to the client over voice...'
+                        : isClientSpeaking
+                        ? `Client ${callbackCustomer.name} is speaking inquiry aloud over telephone...`
                         : isAiThinking
                         ? 'AI agent is consulting verified inventory...'
                         : isAiSpeaking
@@ -902,6 +1108,23 @@ export const CustomerCallbackModal: React.FC = () => {
                     </div>
                   ))}
 
+                  {/* Real-time indicator when client is speaking aloud */}
+                  {isClientSpeaking && (
+                    <div
+                      className={styles.liveSpeakingCard}
+                      style={{
+                        backgroundColor: '#064e3b',
+                        borderColor: '#059669',
+                        color: '#a7f3d0'
+                      }}
+                    >
+                      <Volume2 size={14} />
+                      <span>
+                        Client ({callbackCustomer.name}) is speaking inquiry aloud...
+                      </span>
+                    </div>
+                  )}
+
                   {/* Real-time speech transcription card while speaking */}
                   {userTranscript && (
                     <div className={styles.liveTranscribingCard}>
@@ -943,6 +1166,8 @@ export const CustomerCallbackModal: React.FC = () => {
                             ? styles.voiceTurnTextAmber
                             : callTurnStage === 'ai_greeting' || isAiSpeaking
                             ? styles.voiceTurnTextPurple
+                            : isClientSpeaking
+                            ? styles.voiceTurnTextGreen
                             : styles.voiceTurnTextGreen
                         }
                       >
@@ -950,6 +1175,8 @@ export const CustomerCallbackModal: React.FC = () => {
                           ? 'Outbound Call Connecting...'
                           : callTurnStage === 'ai_greeting'
                           ? 'AI is Speaking Opening Greeting (Client Listening)'
+                          : isClientSpeaking
+                          ? `Client Speaking: "${clientSpeakingText}"`
                           : isAiSpeaking
                           ? 'AI is Speaking Answer Aloud'
                           : isAiThinking
@@ -976,9 +1203,11 @@ export const CustomerCallbackModal: React.FC = () => {
                       <span>
                         {callTurnStage === 'ai_greeting' || callTurnStage === 'dialing'
                           ? 'Client cannot speak until AI completes greeting'
+                          : isClientSpeaking
+                          ? 'Client is speaking enquiry over phone line'
                           : 'Client Spoken Voice Triggers (Microphone or Instant Utterance):'}
                       </span>
-                      {callTurnStage === 'client_turn' && (
+                      {callTurnStage === 'client_turn' && !isClientSpeaking && (
                         <span style={{ color: '#34d399' }}>● Mic Ready</span>
                       )}
                     </div>
@@ -993,11 +1222,16 @@ export const CustomerCallbackModal: React.FC = () => {
                             callTurnStage === 'dialing' ||
                             callTurnStage === 'ai_greeting' ||
                             isAiThinking ||
-                            isAiSpeaking
+                            isAiSpeaking ||
+                            isClientSpeaking
                           }
                           title={
                             callTurnStage === 'ai_greeting'
                               ? 'Waiting for AI to finish speaking greeting'
+                              : isClientSpeaking
+                              ? 'Client is currently speaking'
+                              : isAiSpeaking
+                              ? 'AI is currently speaking'
                               : `Simulate client saying: "${utterance}"`
                           }
                         >
