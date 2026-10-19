@@ -70,7 +70,7 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 - **Media Streaming**: Enables real-time browser calling across two browser tabs using native browser media APIs and local signaling.
 
 ### Engine 3: Click-to-Dial Phone Protocol
-- Integrated throughout all customer telephone numbers (e.g. `tel:+919845012345`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
+- Integrated throughout customer telephone links with the selected demo phone number `+91 72041 04491` (`tel:+917204104491`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
 
 ---
 

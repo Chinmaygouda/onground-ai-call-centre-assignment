@@ -32,7 +32,7 @@ export const mockLeads: Lead[] = [
     slaLeft: '2h left',
     status: 'OPEN',
     quoteTag: 'Quote to be given to customer',
-    phone: '+91 98450 12345',
+    phone: '+91 72041 04491',
     signals: {
       financing: 'Asked specifically about EMI options on the Ortho GRID — budget is a live concern, not a blocker',
       quotation: 'Compared pricing with a competitor before reaching out — price-anchored, expects a competitive number',

@@ -32,7 +32,7 @@ export const Sidebar: React.FC = () => {
     setCurrentRoute('plan/practise');
     startCall({
       name: 'Mukunda (AI Customer)',
-      phone: '+91 98450 12345',
+      phone: '+91 72041 04491',
       mode: 'AI_VOICE',
       value: 8490,
       product: 'Ortho GRID'
