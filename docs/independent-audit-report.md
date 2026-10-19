@@ -220,7 +220,7 @@ The application is **100% functionally verified**, **visually congruent with the
 
 | Component | Standard / Requirement | Status | Audit Findings |
 | :--- | :--- | :---: | :--- |
-| **Model & SDK Target** | Official `@google/genai` v2.30.0 targeting `gemini-3.8-live` (with fallback `gemini-2.0-flash-exp`) | `VERIFIED` | Client connects via WebSocket to Google Live API with function tools |
+| **Model & SDK Target** | Official `@google/genai` targeting `gemini-3.8-live` (dynamic discovery & verified fallback: `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-preview-12-2025`) | `VERIFIED` | Client connects via WebSocket to Google Live API with function tools |
 | **Secret Isolation** | Server-only `GEMINI_API_KEY` in `.env`, strictly never in `VITE_` or client bundle | `VERIFIED` | Production bundle regex scan found 0 keys; `.env` is blocked by `.gitignore` |
 | **Ephemeral Token Service** | `/api/gemini/token` mints short-lived tokens with rate limiting (20 req/min) | `VERIFIED` | Tested HTTP 503 on missing key; returns structured error and clear setup prompt |
 | **Pure Microphone & Spoken Audio** | 16kHz PCM input, 24kHz PCM output with instant interruption drop | `VERIFIED` | AudioProcessor implements Downsampling and gapless AudioContext scheduling |

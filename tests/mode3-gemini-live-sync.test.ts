@@ -247,6 +247,95 @@ async function runSuite() {
     'dispatchLiveToolCall invokes getActiveOffers successfully'
   );
 
+  // -------------------------------------------------------------------------
+  // 6. Voice Model Discovery, Diagnostics & Fallback Chain Verification
+  // -------------------------------------------------------------------------
+  console.log(`\n${BOLD}[6/6] Voice Model Discovery, Diagnostics & Fallback Verification${RESET}`);
+
+  const { ModelFallbackManager } = await import('../src/services/geminiLive/modelFallbackManager');
+
+  // Test 6.1: Manager Initialization & Legacy Model Exclusion
+  const fallbackMgr = new ModelFallbackManager('gemini-3.8-live');
+  assert(
+    fallbackMgr.getActiveModel() === 'gemini-3.8-live',
+    'ModelFallbackManager: Initializes with gemini-3.8-live as primary model'
+  );
+  assert(
+    !fallbackMgr.getFallbackChain().includes('gemini-2.0-flash-exp'),
+    'ModelFallbackManager: Strictly excludes legacy gemini-2.0-flash-exp'
+  );
+
+  // Test 6.2: Error Classification Machine
+  assert(
+    fallbackMgr.classifyError(401, 'Unauthorized') === 'AUTH_FATAL' &&
+    fallbackMgr.classifyError(1008, 'Method does not allow unregistered callers') === 'AUTH_FATAL',
+    'ModelFallbackManager: Classifies 401 and unregistered caller as AUTH_FATAL'
+  );
+  assert(
+    fallbackMgr.classifyError(429, 'Too many requests') === 'RATE_LIMIT_429' &&
+    fallbackMgr.classifyError(1011, 'You exceeded your current quota') === 'QUOTA_EXHAUSTED',
+    'ModelFallbackManager: Classifies 429 burst and 1011 quota exhaustion accurately'
+  );
+  assert(
+    fallbackMgr.classifyError(404, 'Model not found') === 'UNSUPPORTED_MODEL' &&
+    fallbackMgr.classifyError(503, 'Service unavailable') === 'TRANSIENT_503',
+    'ModelFallbackManager: Classifies 404 unsupported and 503 transient outages'
+  );
+
+  // Test 6.3: Fallback Decision Policy (Auth fatal must NOT cycle models)
+  assert(
+    fallbackMgr.shouldFallback('AUTH_FATAL') === false,
+    'ModelFallbackManager: shouldFallback is FALSE for AUTH_FATAL (prevents wasteful model cycling)'
+  );
+  assert(
+    fallbackMgr.shouldFallback('QUOTA_EXHAUSTED') === true,
+    'ModelFallbackManager: shouldFallback is TRUE for QUOTA_EXHAUSTED when fallbacks exist'
+  );
+
+  // Test 6.4: Deterministic Fallback Progression
+  const step1 = fallbackMgr.advanceToFallback('QUOTA_EXHAUSTED', 'Rate limit on primary');
+  assert(
+    step1.switched === true &&
+    step1.fromModel === 'gemini-3.8-live' &&
+    step1.toModel === 'gemini-3.1-flash-live-preview',
+    'ModelFallbackManager: Step 1 switches safely to gemini-3.1-flash-live-preview'
+  );
+
+  const step2 = fallbackMgr.advanceToFallback('QUOTA_EXHAUSTED', 'Rate limit on secondary');
+  assert(
+    step2.switched === true &&
+    step2.fromModel === 'gemini-3.1-flash-live-preview' &&
+    step2.toModel === 'gemini-2.5-flash-native-audio-preview-12-2025',
+    'ModelFallbackManager: Step 2 switches safely to gemini-2.5-flash-native-audio-preview-12-2025'
+  );
+
+  const step3 = fallbackMgr.advanceToFallback('UNSUPPORTED_MODEL', 'End of chain');
+  assert(
+    step3.switched === false,
+    'ModelFallbackManager: Step 3 gracefully reports exhausted chain without crashing'
+  );
+  assert(
+    fallbackMgr.getSwitchHistory().length === 2,
+    'ModelFallbackManager: Maintains complete audit history of all transitions'
+  );
+
+  // Test 6.5: Reset back to primary
+  fallbackMgr.resetToPrimary();
+  assert(
+    fallbackMgr.getActiveModel() === 'gemini-3.8-live',
+    'ModelFallbackManager: resetToPrimary restores active model to primary'
+  );
+
+  // Test 6.6: Server Model Discovery Service Sanitization
+  const { discoverAvailableModels } = await import('../server/modelDiscoveryService');
+  const emptyKeyDiscovery = await discoverAvailableModels('');
+  assert(
+    emptyKeyDiscovery.success === false &&
+    emptyKeyDiscovery.accountHasAccess === false &&
+    emptyKeyDiscovery.models.length > 0,
+    'discoverAvailableModels: Returns structured candidate catalog without leaking secrets when key is empty'
+  );
+
   // Summary
   console.log(`\n${BOLD}======================================================${RESET}`);
   if (failed === 0) {

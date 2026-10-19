@@ -1,6 +1,11 @@
 import { GEMINI_LIVE_FUNCTION_DECLARATIONS, dispatchLiveToolCall } from './liveTools';
 import { GEMINI_LIVE_SYSTEM_INSTRUCTION } from './liveSystemPrompt';
 import { LiveAudioProcessor } from './audioProcessor';
+import {
+  ModelFallbackManager,
+  ModelSwitchEvent,
+  ModelFailureCategory
+} from './modelFallbackManager';
 
 export type LiveConnectionState =
   | 'IDLE'
@@ -9,6 +14,7 @@ export type LiveConnectionState =
   | 'CONNECTING'
   | 'LISTENING'
   | 'SPEAKING'
+  | 'RECONNECTING_FALLBACK'
   | 'ERROR'
   | 'DISCONNECTED';
 
@@ -23,13 +29,17 @@ export interface ToolExecutionEvent {
 }
 
 export interface GeminiLiveClientOptions {
+  primaryModel?: string;
+  fallbackChain?: string[];
   onStateChange: (state: LiveConnectionState) => void;
-  onError: (error: { code: string; message: string }) => void;
+  onError: (error: { code: string; message: string; category?: ModelFailureCategory }) => void;
   onUserTranscript: (text: string) => void;
   onAiTranscript: (text: string) => void;
   onToolExecuted: (event: ToolExecutionEvent) => void;
   onInterrupted: () => void;
   onAudioLevel?: (level: number, isAi: boolean) => void;
+  onModelFallback?: (event: ModelSwitchEvent) => void;
+  onActiveModelChanged?: (model: string) => void;
 }
 
 export class GeminiLiveClient {
@@ -38,13 +48,27 @@ export class GeminiLiveClient {
   private options: GeminiLiveClientOptions;
   private state: LiveConnectionState = 'IDLE';
   private animationFrameId: number | null = null;
+  private fallbackManager: ModelFallbackManager;
+  private isIntentionalDisconnect = false;
 
   constructor(options: GeminiLiveClientOptions) {
     this.options = options;
+    this.fallbackManager = new ModelFallbackManager(
+      options.primaryModel || 'gemini-3.8-live',
+      options.fallbackChain
+    );
   }
 
   public getState(): LiveConnectionState {
     return this.state;
+  }
+
+  public getActiveModel(): string {
+    return this.fallbackManager.getActiveModel();
+  }
+
+  public getFallbackManager(): ModelFallbackManager {
+    return this.fallbackManager;
   }
 
   public getAudioProcessor(): LiveAudioProcessor {
@@ -56,10 +80,12 @@ export class GeminiLiveClient {
     this.options.onStateChange(newState);
   }
 
-  // Fetch short-lived ephemeral token from secure server endpoint
-  private async fetchEphemeralToken(): Promise<{ token: string; model: string }> {
+  // Fetch short-lived ephemeral token tailored to the active/fallback model
+  private async fetchEphemeralToken(targetModel?: string): Promise<{ token: string; model: string }> {
     this.setState('FETCHING_TOKEN');
-    const res = await fetch('/api/gemini/token', { method: 'POST' });
+    const modelToRequest = targetModel || this.fallbackManager.getActiveModel();
+    const url = `/api/gemini/token?model=${encodeURIComponent(modelToRequest)}`;
+    const res = await fetch(url, { method: 'POST' });
     const data = await res.json();
 
     if (!res.ok || !data.success || !data.token) {
@@ -71,13 +97,14 @@ export class GeminiLiveClient {
 
     return {
       token: data.token,
-      model: data.model || 'gemini-3.8-live'
+      model: data.model || modelToRequest
     };
   }
 
   // Connect and start genuine Gemini Live session
   public async connect(): Promise<void> {
     try {
+      this.isIntentionalDisconnect = false;
       this.disconnect();
 
       // 1. Request microphone permission and initialize 16kHz audio capture
@@ -98,15 +125,19 @@ export class GeminiLiveClient {
         }
       });
 
-      // 2. Obtain ephemeral token from server endpoint
-      const { token, model } = await this.fetchEphemeralToken();
+      // 2. Obtain ephemeral token for the active model from server endpoint
+      const activeModel = this.fallbackManager.getActiveModel();
+      const { token, model } = await this.fetchEphemeralToken(activeModel);
 
       // 3. Connect to official Gemini Live WebSocket endpoint
       this.setState('CONNECTING');
       console.log(`[GeminiLive:Client] Connecting to Gemini Live WebSocket (Model: ${model})...`);
 
-      // Official WebSocket endpoint with access_token parameter
-      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?access_token=${encodeURIComponent(
+      // Use BidiGenerateContentConstrained for ephemeral tokens starting with auth_tokens/
+      const isConstrained = token.startsWith('auth_tokens/');
+      const method = isConstrained ? 'BidiGenerateContentConstrained' : 'BidiGenerateContent';
+      const paramName = isConstrained ? 'access_token' : 'key';
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.${method}?${paramName}=${encodeURIComponent(
         token
       )}`;
 
@@ -114,7 +145,7 @@ export class GeminiLiveClient {
       this.ws = ws;
 
       ws.onopen = () => {
-        console.log('[GeminiLive:Client] WebSocket connection established. Sending setup message...');
+        console.log(`[GeminiLive:Client] WebSocket established for model: ${model}. Sending setup message...`);
         const normalizedModel = model.startsWith('models/') ? model : `models/${model}`;
 
         const setupMessage = {
@@ -143,6 +174,7 @@ export class GeminiLiveClient {
 
         ws.send(JSON.stringify(setupMessage));
         this.setState('LISTENING');
+        this.options.onActiveModelChanged?.(model);
         this.startAudioVisualizerLoop();
       };
 
@@ -167,19 +199,64 @@ export class GeminiLiveClient {
 
       ws.onerror = (e) => {
         console.error('[GeminiLive:Client] WebSocket error:', e);
-        this.setState('ERROR');
-        this.options.onError({
-          code: 'WEBSOCKET_ERROR',
-          message: 'Real-time WebSocket communication error with Gemini Live API.'
-        });
       };
 
       ws.onclose = (e) => {
         console.log(`[GeminiLive:Client] WebSocket closed (Code: ${e.code}, Reason: ${e.reason || 'Normal'})`);
         this.stopAudioVisualizerLoop();
-        if (this.state !== 'IDLE') {
+
+        if (this.isIntentionalDisconnect) {
           this.setState('DISCONNECTED');
+          return;
         }
+
+        const reason = e.reason || '';
+        const category = this.fallbackManager.classifyError(e.code, reason);
+
+        // Check if error warrants fallback to next compatible model
+        if (this.fallbackManager.shouldFallback(category)) {
+          const switchRes = this.fallbackManager.advanceToFallback(category, reason);
+          if (switchRes.switched) {
+            console.log(`[GeminiLive:Client] ${switchRes.notice}`);
+            this.setState('RECONNECTING_FALLBACK');
+            this.options.onModelFallback?.({
+              id: Math.random().toString(36).substring(2, 9),
+              timestamp: new Date().toLocaleTimeString(),
+              fromModel: switchRes.fromModel,
+              toModel: switchRes.toModel,
+              failureCategory: category,
+              reason: reason || `Error ${e.code}`,
+              retryDelayMs: switchRes.delayMs,
+              success: true
+            });
+            this.options.onActiveModelChanged?.(switchRes.toModel);
+
+            // Clean up playback buffer queue immediately
+            this.audioProcessor.stopPlayback();
+
+            setTimeout(() => {
+              this.connect();
+            }, switchRes.delayMs);
+            return;
+          }
+        }
+
+        // Fatal auth error or exhausted fallbacks
+        this.setState('ERROR');
+        let userMessage = 'Real-time WebSocket communication closed by Gemini Live server.';
+        if (category === 'AUTH_FATAL') {
+          userMessage = 'API key authentication failure. Please check your GEMINI_API_KEY in .env.';
+        } else if (category === 'QUOTA_EXHAUSTED') {
+          userMessage = `Quota exhausted across available voice models (Last attempted: ${activeModel}). Please check your Google AI Studio quota.`;
+        } else if (reason) {
+          userMessage = reason;
+        }
+
+        this.options.onError({
+          code: `WS_${e.code}`,
+          message: userMessage,
+          category
+        });
       };
     } catch (err: any) {
       console.error('[GeminiLive:Client] Connection initialization error:', err);
@@ -190,6 +267,34 @@ export class GeminiLiveClient {
       });
       this.disconnect();
     }
+  }
+
+  // Simulation method for automated and manual rate-limit / fallback testing
+  public simulateFallbackTest(category: ModelFailureCategory, reason: string): boolean {
+    if (!this.fallbackManager.shouldFallback(category)) {
+      return false;
+    }
+    const switchRes = this.fallbackManager.advanceToFallback(category, reason);
+    if (switchRes.switched) {
+      this.setState('RECONNECTING_FALLBACK');
+      this.options.onModelFallback?.({
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: new Date().toLocaleTimeString(),
+        fromModel: switchRes.fromModel,
+        toModel: switchRes.toModel,
+        failureCategory: category,
+        reason: `[SIMULATED] ${reason}`,
+        retryDelayMs: switchRes.delayMs,
+        success: true
+      });
+      this.options.onActiveModelChanged?.(switchRes.toModel);
+      this.audioProcessor.stopPlayback();
+      setTimeout(() => {
+        this.connect();
+      }, switchRes.delayMs);
+      return true;
+    }
+    return false;
   }
 
   // Handle incoming server message from Gemini Live API
@@ -308,6 +413,7 @@ export class GeminiLiveClient {
 
   // Disconnect session and release all audio/network resources
   public disconnect(): void {
+    this.isIntentionalDisconnect = true;
     this.stopAudioVisualizerLoop();
     this.audioProcessor.dispose();
 

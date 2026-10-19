@@ -4,8 +4,14 @@ import {
   LiveConnectionState,
   ToolExecutionEvent
 } from '../services/geminiLive/geminiLiveClient';
+import {
+  ModelSwitchEvent,
+  ModelFailureCategory,
+  DEFAULT_FALLBACK_CHAIN
+} from '../services/geminiLive/modelFallbackManager';
 import { businessDataProvider } from '../services/businessData/BusinessDataProvider';
 import { VerifiedProduct } from '../services/businessData/types';
+import type { DiscoveredModelInfo } from '../../server/modelDiscoveryService';
 
 interface GeminiLiveContextType {
   isModalOpen: boolean;
@@ -14,6 +20,14 @@ interface GeminiLiveContextType {
   connectionState: LiveConnectionState;
   isConfigured: boolean | null;
   serverModel: string;
+  activeModel: string;
+  fallbackChain: string[];
+  discoveredModels: DiscoveredModelInfo[];
+  isCheckingModels: boolean;
+  checkAvailableModels: (refresh?: boolean) => Promise<void>;
+  modelSwitchEvent: ModelSwitchEvent | null;
+  fallbackHistory: ModelSwitchEvent[];
+  simulateFallback: (category: ModelFailureCategory, reason: string) => boolean;
   errorMessage: string | null;
   userTranscript: string;
   aiTranscript: string;
@@ -40,6 +54,12 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [connectionState, setConnectionState] = useState<LiveConnectionState>('IDLE');
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [serverModel, setServerModel] = useState<string>('gemini-3.8-live');
+  const [activeModel, setActiveModel] = useState<string>('gemini-3.8-live');
+  const [fallbackChain, setFallbackChain] = useState<string[]>(DEFAULT_FALLBACK_CHAIN);
+  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModelInfo[]>([]);
+  const [isCheckingModels, setIsCheckingModels] = useState<boolean>(false);
+  const [modelSwitchEvent, setModelSwitchEvent] = useState<ModelSwitchEvent | null>(null);
+  const [fallbackHistory, setFallbackHistory] = useState<ModelSwitchEvent[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userTranscript, setUserTranscript] = useState<string>('');
   const [aiTranscript, setAiTranscript] = useState<string>('');
@@ -61,12 +81,46 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (res.ok) {
         const data = await res.json();
         setIsConfigured(data.configured);
-        if (data.targetModel) setServerModel(data.targetModel);
+        if (data.targetModel) {
+          setServerModel(data.targetModel);
+          if (!activeModel || activeModel === 'gemini-3.8-live') {
+            setActiveModel(data.targetModel);
+          }
+        }
       } else {
         setIsConfigured(false);
       }
     } catch {
       setIsConfigured(false);
+    }
+  };
+
+  // Model discovery check against GET /api/gemini/models
+  const checkAvailableModels = async (refresh = false) => {
+    setIsCheckingModels(true);
+    try {
+      const url = `/api/gemini/models${refresh ? '?refresh=true' : ''}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.models) {
+          setDiscoveredModels(data.models);
+        }
+        if (data.fallbackChain && data.fallbackChain.length > 0) {
+          setFallbackChain(data.fallbackChain);
+          if (clientRef.current) {
+            clientRef.current.getFallbackManager().updateChainFromDiscovery(data.fallbackChain);
+          }
+        }
+        if (data.primaryModel) {
+          setServerModel(data.primaryModel);
+          setActiveModel(data.primaryModel);
+        }
+      }
+    } catch (e) {
+      console.warn('[GeminiLiveContext] Model discovery check error:', e);
+    } finally {
+      setIsCheckingModels(false);
     }
   };
 
@@ -115,6 +169,8 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setToolEvents([]);
 
     const client = new GeminiLiveClient({
+      primaryModel: serverModel,
+      fallbackChain: fallbackChain.length > 0 ? fallbackChain : undefined,
       onStateChange: (state) => {
         setConnectionState(state);
         setIsAiSpeaking(state === 'SPEAKING');
@@ -138,6 +194,14 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       onAudioLevel: (level, isAi) => {
         setAudioLevel(level);
         setIsAiSpeaking(isAi);
+      },
+      onModelFallback: (switchEvent) => {
+        setModelSwitchEvent(switchEvent);
+        setFallbackHistory((prev) => [switchEvent, ...prev]);
+        setActiveModel(switchEvent.toModel);
+      },
+      onActiveModelChanged: (model) => {
+        setActiveModel(model);
       }
     });
 
@@ -153,6 +217,7 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setConnectionState('IDLE');
     setIsAiSpeaking(false);
     setAudioLevel(0);
+    setModelSwitchEvent(null);
   };
 
   const toggleMute = () => {
@@ -165,6 +230,13 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const clearError = () => {
     setErrorMessage(null);
+  };
+
+  const simulateFallback = (category: ModelFailureCategory, reason: string): boolean => {
+    if (clientRef.current) {
+      return clientRef.current.simulateFallbackTest(category, reason);
+    }
+    return false;
   };
 
   const updateProductPrice = (productId: string, size: string, newPrice: number): boolean => {
@@ -189,6 +261,14 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         connectionState,
         isConfigured,
         serverModel,
+        activeModel,
+        fallbackChain,
+        discoveredModels,
+        isCheckingModels,
+        checkAvailableModels,
+        modelSwitchEvent,
+        fallbackHistory,
+        simulateFallback,
         errorMessage,
         userTranscript,
         aiTranscript,

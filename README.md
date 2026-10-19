@@ -73,7 +73,7 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 - Integrated throughout customer telephone links with the selected demo phone number `+91 72041 04491` (`tel:+917204104491`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
 
 ### Engine 4 (Mode 3): Gemini Live Voice Assistant with Synchronized Business Data
-- **Real-Time Multimodal Voice AI**: Connects to the official **Gemini Live API** (`gemini-3.8-live`, with `gemini-2.0-flash-exp` fallback) over a low-latency bidirectional WebSocket connection.
+- **Real-Time Multimodal Voice AI**: Connects to the official **Gemini Live API** (`gemini-3.8-live`, with dynamic server model discovery and automatic fallback chain to `gemini-3.1-flash-live-preview` and `gemini-2.5-flash-native-audio-preview-12-2025`) over a low-latency bidirectional WebSocket connection.
 - **Pure Microphone & Spoken Output**: Real-time microphone input is downsampled and streamed as raw 16kHz mono PCM (`audio/pcm;rate=16000`). AI responses are streamed back as 24kHz raw PCM chunks played through an `AudioContext` queue with instant interruption handling (`interrupted: true` drops queued buffers immediately). **No `window.speechSynthesis` substitution.**
 - **Zero-Secret Client Architecture (Ephemeral Tokens)**:
   - `GEMINI_API_KEY` is strictly server-only, read from `.env` and **never** prefixed with `VITE_`.

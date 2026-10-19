@@ -77,12 +77,15 @@ export async function handleGeminiTokenRequest(
       }
     });
 
+    const url = new URL(req.url || '', 'http://localhost');
+    const requestedModel = url.searchParams.get('model') || targetModel;
+
     const payload: TokenResponsePayload = {
       success: true,
       token: tokenResponse.name,
       expireTime,
       newSessionExpireTime,
-      model: targetModel
+      model: requestedModel
     };
 
     res.statusCode = 200;
@@ -125,10 +128,48 @@ export function handleGeminiStatusRequest(
       configured: isConfigured,
       targetModel,
       ephemeralEndpoint: '/api/gemini/token',
+      modelsEndpoint: '/api/gemini/models',
       securityMode: 'EPHEMERAL_TOKENS_ONLY',
       notice: isConfigured
         ? 'Server ready to mint short-lived Gemini Live session tokens.'
         : 'GEMINI_API_KEY is missing in local .env.'
     })
   );
+}
+
+export async function handleGeminiModelsRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  apiKey?: string,
+  targetModel = 'gemini-3.8-live'
+) {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  const { discoverAvailableModels } = await import('./modelDiscoveryService');
+  const url = new URL(req.url || '', 'http://localhost');
+  const forceRefresh = url.searchParams.get('refresh') === 'true';
+
+  try {
+    const discovery = await discoverAvailableModels(apiKey, targetModel, forceRefresh);
+    res.statusCode = discovery.success ? 200 : 503;
+    res.end(JSON.stringify(discovery));
+  } catch (err: any) {
+    res.statusCode = 500;
+    res.end(
+      JSON.stringify({
+        success: false,
+        accountHasAccess: false,
+        error: 'DISCOVERY_EXCEPTION',
+        notice: err?.message || 'Unexpected error during model discovery.'
+      })
+    );
+  }
 }
