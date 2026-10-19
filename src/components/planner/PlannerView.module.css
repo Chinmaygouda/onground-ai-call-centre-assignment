@@ -1,0 +1,385 @@
+.plannerContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background-color: #ffffff;
+}
+
+/* Dark Navy Header Banner */
+.headerBanner {
+  background-color: var(--color-header-navy);
+  padding: 20px 32px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.bannerTitles {
+  display: flex;
+  flex-direction: column;
+}
+
+.bannerSub {
+  font-size: 13px;
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+.bannerMain {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.bannerDate {
+  font-size: 13px;
+  color: #cbd5e1;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+
+/* Sub-navigation tabs inside Planner */
+.subTabsRow {
+  display: flex;
+  gap: 8px;
+  padding: 16px 32px 0 32px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background-color: #f8fafc;
+}
+
+.subTabBtn {
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.subTabBtn:hover {
+  color: #0f172a;
+}
+
+.subTabActive {
+  color: #047857;
+  border-bottom-color: #047857;
+}
+
+/* Content Area */
+.plannerBody {
+  padding: 24px 32px 80px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sectionSubtitle {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+/* Incoming Header Metric Stats */
+.incomingStatsRow {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding: 16px 20px;
+  background-color: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  margin-bottom: 8px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.statVal {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.statValGreen {
+  color: #047857;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* List Rows */
+.listCard {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.listItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background-color var(--transition-fast);
+}
+
+.listItem:last-child {
+  border-bottom: none;
+}
+
+.listItem:hover {
+  background-color: #f8fafc;
+}
+
+.itemLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatarCircle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #fed7aa;
+  color: #9a3412;
+  font-weight: 700;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatarGreen {
+  background-color: #bbf7d0;
+  color: #14532d;
+}
+
+.iconCircle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconInbound {
+  background-color: #ecfdf5;
+  color: #10b981;
+}
+
+.iconOutbound {
+  background-color: #eff6ff;
+  color: #3b82f6;
+}
+
+.iconMissed {
+  background-color: #fef2f2;
+  color: #ef4444;
+}
+
+.itemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.itemDetail {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.itemRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.scoreBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.scoreNumber {
+  font-size: 18px;
+  font-weight: 800;
+  color: #047857;
+}
+
+.scoreText {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.callbackBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #047857;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 4px rgba(4, 120, 87, 0.2);
+}
+
+.callbackBtn:hover {
+  background-color: #065f46;
+  transform: translateY(-1px);
+}
+
+.valueTag {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: right;
+}
+
+.valueLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  display: block;
+}
+
+/* Pagination Bar */
+.paginationRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0;
+  margin-top: 10px;
+}
+
+.pageBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border-subtle);
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  transition: all var(--transition-fast);
+}
+
+.pageBtn:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageText {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* SOP Review Drawer Overlay */
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 90;
+  animation: fadeIn 200ms ease;
+}
+
+.drawerCard {
+  width: 480px;
+  height: 100%;
+  background-color: #ffffff;
+  box-shadow: -4px 0 25px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  animation: slideLeft 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.drawerHeader {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f8fafc;
+}
+
+.drawerTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.drawerBody {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.closeBtn {
+  padding: 6px;
+  border-radius: 6px;
+  color: #64748b;
+  transition: background-color var(--transition-fast);
+}
+
+.closeBtn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
