@@ -62,20 +62,15 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 ### Engine 1: AI-to-Human Voice Agent (`VoiceAI`)
 - **Speech Capture**: Captures real agent speech through `webkitSpeechRecognition` / `SpeechRecognition` with continuous listening and interim speech hypothesis results.
 - **Microphone Audio Visualizer**: Connects `navigator.mediaDevices.getUserMedia({ audio: true })` into an `AudioContext` and `AnalyserNode`. It samples 32 frequency bins in an `animationFrame` loop, rendering real-time animated sound waves onto a canvas element.
-- **Conversational AI Logic**: Parses agent speech and streams dynamic spoken responses using the browser's native `window.speechSynthesis` (`SpeechSynthesisUtterance`). 
-- **Domain Dialogue Flow**: Roleplays as a high-intent customer inquiring about The Sleep Company's SmartGRID Ortho mattress, asking questions about EMI financing, warranty terms, and store demo appointments.
+- **Conversational Dialogue**: Parses agent speech and streams spoken customer responses using the browser's native `window.speechSynthesis` (`SpeechSynthesisUtterance`). *Note: In accordance with the assignment constraint requiring "no backend" and zero external API dependencies, customer responses are rule-based domain scripts (addressing SmartGRID Ortho mattress specs, 0% EMI financing, warranty terms, and store appointments) rather than an external cloud LLM.*
 - **Controls**: Live elapsed call timer, Mute/Unmute microphone toggle, and Call End action that updates call logs.
 
 ### Engine 2: Human-to-Human WebRTC Peer Calling (`WebRTC Multi-Tab`)
-- **Signaling via BroadcastChannel**: Inter-tab communication uses `new BroadcastChannel('onground-callcentre-signaling')`. No backend WebSocket server is required.
-- **Media Streaming**: When an in-app call is initiated:
-  1. Tab 1 captures the local microphone stream and creates an `RTCPeerConnection` with public STUN servers (`stun:stun.l.google.com:19302`).
-  2. Tab 1 generates an SDP Offer and broadcasts it.
-  3. When Tab 2 opens the app, it receives the offer, prompts the user to accept, generates an SDP Answer, and exchanges ICE candidates over the channel.
-  4. Full two-way live audio is streamed between the two tabs.
+- **Signaling via BroadcastChannel**: Inter-tab communication uses `new BroadcastChannel('onground-callcentre-signaling')`. No external WebSocket backend is required.
+- **Media Streaming**: Enables real-time browser calling across two browser tabs using native browser media APIs and local signaling.
 
 ### Engine 3: Click-to-Dial Phone Protocol
-- Integrated throughout all customer telephone numbers (e.g. `tel:+919845012345`), seamlessly bridging desktop/mobile OS dialers.
+- Integrated throughout all customer telephone numbers (e.g. `tel:+919845012345`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
 
 ---
 
@@ -197,7 +192,30 @@ d:\company\
 
 ---
 
-## 7. AI Tools Disclosure
+## 7. Git Repository & Branch Workflow
+
+- **GitHub Repository**: [https://github.com/Chinmaygouda/onground-ai-call-centre-assignment](https://github.com/Chinmaygouda/onground-ai-call-centre-assignment)
+- **Repository Visibility**: Private (preserves company-supplied reference materials and assignment PDF while enabling access for review).
+
+### Branch Structure & Development Lifecycle
+- **`main`**: The production-ready, stable, and tested submission branch. All code on `main` has passed full TypeScript typechecking (`tsc --noEmit`), Vite production bundling (`vite build`), and browser validation.
+- **`develop`**: The primary integration and staging branch. Features and enhancements are merged here first for integration testing before promotion to `main`.
+- **`feature/*`**: Isolated topic branches for discrete feature developments or experimental enhancements (e.g., `feature/calling-engine`, `feature/qa-fixes`, `feature/ui-polish`).
+
+### Workflow Rules:
+1. **Branching**: New work branches off `develop` (`git checkout -b feature/<name> develop`).
+2. **Commit Hygiene**: Incremental, conventional commits (`feat:`, `fix:`, `docs:`, `chore:`) describing the exact change.
+3. **Local Quality Gates**: Before merging into `develop`, all code must pass:
+   ```bash
+   pnpm run typecheck   # Strict TypeScript checks
+   pnpm run build       # Production bundle verification
+   ```
+4. **Integration**: Verified feature branches are merged into `develop`.
+5. **Release Promotion**: When `develop` reaches a verified milestone, it is promoted to `main`.
+
+---
+
+## 8. AI Tools Disclosure
 
 As instructed by the assignment ground rules:
 - **AI Tool Used**: **Google Antigravity IDE** paired with Gemini and Claude reasoning models.
@@ -209,7 +227,7 @@ As instructed by the assignment ground rules:
 
 ---
 
-## 8. Screen Recording & Live Demo
+## 9. Screen Recording & Live Demo
 
 - **Local Video Walkthrough Artifact**: Recorded via internal browser subagent and preserved at:  
   `callcentre_walkthrough_1792430473274.webp`
@@ -223,7 +241,7 @@ As instructed by the assignment ground rules:
 
 ---
 
-## 9. Submission Metadata
+## 10. Submission Metadata
 - **Candidate Submission**: OnGround.ai Engineering Hiring Assignment
 - **Addressed To**: `mukunda@on-ground.ai`
 - **Deadline**: Tuesday, 20 October 2026, 10:00 AM IST
