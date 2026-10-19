@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { CallEngineMode, ActiveCallState } from '../types';
+import { getTelUri } from '../utils/phoneUtils';
 
 export interface IncomingPeerCallInfo {
   callerName: string;
@@ -482,6 +483,13 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} startCall initiated: '${name}', phone: '${phone}', mode: '${mode}'`);
 
+    if (mode === 'PHONE') {
+      const telUri = getTelUri(phone) || `tel:${phone.replace(/\s+/g, '')}`;
+      console.log(`[Calling:Native] Invoking device dialer via ${telUri}`);
+      window.location.href = telUri;
+      return;
+    }
+
     setCallState({
       lifecycle: 'DIALING',
       mode,
@@ -494,11 +502,6 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isMuted: false,
       aiResponseText: mode === 'WEBRTC_PEER' ? 'Broadcasting in-app call to peer tabs...' : 'Connecting secure audio stream...'
     });
-
-    if (mode === 'PHONE') {
-      window.location.href = `tel:${phone.replace(/\s+/g, '')}`;
-      return;
-    }
 
     await startAudioVisualizer();
 

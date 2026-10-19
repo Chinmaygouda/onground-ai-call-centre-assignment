@@ -14,6 +14,7 @@ import {
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
 import { RecentCall } from '../../types';
+import { ClickToCallButton } from '../common/ClickToCallButton';
 import styles from './PlannerView.module.css';
 
 export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'recent' }> = ({
@@ -117,7 +118,11 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                         {lead.initials}
                       </div>
                       <div className={styles.itemInfo}>
-                        <div className={styles.itemName}>{lead.name}</div>
+                        <div className={styles.itemNameRow}>
+                          <span className={styles.itemName}>{lead.name}</span>
+                          <span className={styles.itemPhone}>{lead.phone}</span>
+                          <ClickToCallButton phone={lead.phone} customerName={lead.name} size="sm" />
+                        </div>
                         <div className={styles.itemDetail}>
                           Interested: {lead.product} · ₹{lead.price.toLocaleString()}
                         </div>
@@ -192,7 +197,11 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                       <PhoneMissed size={18} />
                     </div>
                     <div className={styles.itemInfo}>
-                      <div className={styles.itemName}>{call.name}</div>
+                      <div className={styles.itemNameRow}>
+                        <span className={styles.itemName}>{call.name}</span>
+                        <span className={styles.itemPhone}>{call.phone}</span>
+                        <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
+                      </div>
                       <div className={styles.itemDetail}>{call.missedText}</div>
                     </div>
                   </div>
@@ -258,7 +267,17 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     </div>
 
                     <div className={styles.itemInfo}>
-                      <div className={styles.itemName}>{call.name}</div>
+                      <div className={styles.itemNameRow}>
+                        <span className={styles.itemName}>{call.name}</span>
+                        {call.phone ? (
+                          <>
+                            <span className={styles.itemPhone}>{call.phone}</span>
+                            <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
+                          </>
+                        ) : (
+                          <ClickToCallButton phone={null} customerName={call.name} size="sm" />
+                        )}
+                      </div>
                       <div className={styles.itemDetail}>
                         {call.timeText}
                       </div>
@@ -296,9 +315,19 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
             <div className={styles.drawerHeader}>
               <div>
                 <h3 className={styles.drawerTitle}>SOP Call Review</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>
-                  {selectedCallReview.name} · {selectedCallReview.duration}
-                </span>
+                <div className={styles.drawerSubRow}>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>
+                    {selectedCallReview.name} · {selectedCallReview.duration}
+                  </span>
+                  {selectedCallReview.phone && (
+                    <span className={styles.drawerPhone}>{selectedCallReview.phone}</span>
+                  )}
+                  <ClickToCallButton
+                    phone={selectedCallReview.phone}
+                    customerName={selectedCallReview.name}
+                    size="sm"
+                  />
+                </div>
               </div>
               <button
                 className={styles.closeBtn}
@@ -396,22 +425,33 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button
-                className={styles.callbackBtn}
-                style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}
-                onClick={() => {
-                  setSelectedCallReview(null);
-                  startCall({
-                    name: selectedCallReview.name,
-                    phone: '+91 72041 04491',
-                    mode: 'AI_VOICE'
-                  });
-                }}
-              >
-                <PhoneCall size={14} />
-                <span>Call {selectedCallReview.name} Again</span>
-              </button>
+              {/* Action Buttons */}
+              <div className={styles.drawerActions}>
+                <button
+                  className={styles.callbackBtn}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => {
+                    const phoneToCall = selectedCallReview.phone || '+91 72041 04491';
+                    setSelectedCallReview(null);
+                    startCall({
+                      name: selectedCallReview.name,
+                      phone: phoneToCall,
+                      mode: 'AI_VOICE'
+                    });
+                  }}
+                  title={`Call ${selectedCallReview.name} with AI voice assistant`}
+                >
+                  <PhoneCall size={14} />
+                  <span>Call {selectedCallReview.name} (In-App)</span>
+                </button>
+                <ClickToCallButton
+                  phone={selectedCallReview.phone}
+                  customerName={selectedCallReview.name}
+                  variant="pill"
+                  showNumber
+                  size="md"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
+import { ClickToCallButton } from '../common/ClickToCallButton';
 import styles from './LeadsModal.module.css';
 
 export const LeadsModal: React.FC = () => {
@@ -46,16 +47,7 @@ export const LeadsModal: React.FC = () => {
     });
   };
 
-  const handlePhoneCall = () => {
-    closeLeadsModal();
-    startCall({
-      name: currentLead.name,
-      phone: currentLead.phone,
-      mode: 'PHONE',
-      value: currentLead.price,
-      product: currentLead.product
-    });
-  };
+
 
   return (
     <div className={styles.modalBackdrop} onClick={closeLeadsModal}>
@@ -117,10 +109,18 @@ export const LeadsModal: React.FC = () => {
           {/* Contact Details */}
           <div className={styles.contactRow}>
             <div className={styles.avatarMK}>{currentLead.initials}</div>
-            <div>
+            <div className={styles.contactInfo}>
               <div className={styles.contactNameText}>{currentLead.name}</div>
               <div className={styles.productText}>
                 Interested: {currentLead.product} · ₹{currentLead.price.toLocaleString()}
+              </div>
+              <div className={styles.contactPhoneRow}>
+                <span className={styles.contactPhoneText}>{currentLead.phone}</span>
+                <ClickToCallButton
+                  phone={currentLead.phone}
+                  customerName={currentLead.name}
+                  size="sm"
+                />
               </div>
             </div>
           </div>
@@ -255,34 +255,25 @@ export const LeadsModal: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
-                boxShadow: '0 4px 10px rgba(4, 120, 87, 0.25)'
+                boxShadow: '0 4px 10px rgba(4, 120, 87, 0.25)',
+                cursor: 'pointer',
+                border: 'none'
               }}
               onClick={handleInAppCall}
+              title="Start WebRTC in-app browser call with this lead"
             >
               <Phone size={14} />
               <span>In-app call</span>
             </button>
 
-            <button
-              style={{
-                flex: 1,
-                backgroundColor: '#f1f5f9',
-                color: '#334155',
-                border: '1px solid #cbd5e1',
-                padding: '10px',
-                borderRadius: '9999px',
-                fontSize: '13px',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
-              onClick={handlePhoneCall}
-            >
-              <Phone size={14} />
-              <span>Phone call</span>
-            </button>
+            <ClickToCallButton
+              phone={currentLead.phone}
+              customerName={currentLead.name}
+              variant="pill"
+              showNumber
+              size="md"
+              className={styles.nativeDialerActionBtn}
+            />
           </div>
         </div>
       </div>
