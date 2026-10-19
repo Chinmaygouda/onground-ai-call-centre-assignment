@@ -12,6 +12,7 @@ export type LiveConnectionState =
   | 'REQUESTING_MIC'
   | 'FETCHING_TOKEN'
   | 'CONNECTING'
+  | 'WAITING_FOR_SETUP'
   | 'LISTENING'
   | 'SPEAKING'
   | 'RECONNECTING_FALLBACK'
@@ -110,20 +111,32 @@ export class GeminiLiveClient {
     this.setState('FETCHING_TOKEN');
     const modelToRequest = targetModel || this.fallbackManager.getActiveModel();
     const url = `/api/gemini/token?model=${encodeURIComponent(modelToRequest)}`;
-    const res = await fetch(url, { method: 'POST' });
-    const data = await res.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    if (!res.ok || !data.success || !data.token) {
-      const errCode = data.error || 'TOKEN_FETCH_FAILED';
-      const errMsg =
-        data.message || 'Failed to acquire short-lived Gemini Live session token from server.';
-      throw new Error(`[${errCode}] ${errMsg}`);
+    try {
+      const res = await fetch(url, { method: 'POST', signal: controller.signal });
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.token) {
+        const errCode = data.error || 'TOKEN_FETCH_FAILED';
+        const errMsg =
+          data.message || 'Failed to acquire short-lived Gemini Live session token from server.';
+        throw new Error(`[${errCode}] ${errMsg}`);
+      }
+
+      return {
+        token: data.token,
+        model: data.model || modelToRequest
+      };
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error('[TOKEN_TIMEOUT] Token request timed out after 6000ms. Please check network connection.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return {
-      token: data.token,
-      model: data.model || modelToRequest
-    };
   }
 
   // Connect and start genuine Gemini Live session
@@ -178,6 +191,7 @@ export class GeminiLiveClient {
       this.ws = ws;
 
       ws.onopen = () => {
+        this.setState('WAITING_FOR_SETUP');
         console.log(`[GeminiLive:Client] WebSocket open for model: ${model}. Sending setup message and awaiting setupComplete...`);
         const normalizedModel = model.startsWith('models/') ? model : `models/${model}`;
 
@@ -501,6 +515,33 @@ export class GeminiLiveClient {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+  }
+
+  // Send text message directly over established live WebSocket session
+  public sendTextMessage(text: string): boolean {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.isSetupConfirmed) {
+      try {
+        const payload = {
+          clientContent: {
+            turns: [
+              {
+                role: 'user',
+                parts: [{ text }]
+              }
+            ],
+            turnComplete: true
+          }
+        };
+        this.ws.send(JSON.stringify(payload));
+        this.isAiThinking = true;
+        this.options.onAiThinkingChange?.(true);
+        return true;
+      } catch (err) {
+        console.warn('[GeminiLive:Client] Failed to send text message over WebSocket', err);
+        return false;
+      }
+    }
+    return false;
   }
 
   // Mute microphone

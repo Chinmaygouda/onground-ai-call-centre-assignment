@@ -66,8 +66,12 @@ interface GeminiLiveContextType {
   isMuted: boolean;
   startSession: () => Promise<void>;
   endSession: () => void;
+  cancelConnecting: () => void;
   toggleMute: () => void;
   clearError: () => void;
+  askQuestion: (question: string) => Promise<void>;
+  isVoiceOutputEnabled: boolean;
+  toggleVoiceOutput: () => void;
 
   // Live Data Sync & Mutation Test Harness
   products: VerifiedProduct[];
@@ -108,6 +112,55 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     chunksSent: 0,
     bytesSent: 0
   });
+
+  const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState<boolean>(true);
+  const toggleVoiceOutput = () => setIsVoiceOutputEnabled((prev) => !prev);
+
+  // Audio speech synthesis helper for spoken AI responses
+  const speakAnswer = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const cleanText = text
+        .replace(/[*_#`~[\]]/g, '')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/₹\s*/g, 'Rupees ');
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(
+        (v) =>
+          v.lang.startsWith('en') &&
+          (v.name.includes('Google') ||
+            v.name.includes('Natural') ||
+            v.name.includes('Samantha') ||
+            v.name.includes('Zira') ||
+            v.name.includes('English'))
+      );
+      if (preferredVoice) utterance.voice = preferredVoice;
+
+      utterance.onstart = () => {
+        setIsAiSpeaking(true);
+        setAudioLevel(0.65);
+      };
+      utterance.onend = () => {
+        setIsAiSpeaking(false);
+        setAudioLevel(0);
+      };
+      utterance.onerror = (e) => {
+        console.warn('[SpeechSynthesis] Utterance notice:', e);
+        setIsAiSpeaking(false);
+        setAudioLevel(0);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn('[SpeechSynthesis] Failed to play utterance:', err);
+    }
+  };
 
   // Live business data state
   const [products, setProducts] = useState<VerifiedProduct[]>([]);
@@ -244,6 +297,9 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (connectionState !== 'IDLE' && connectionState !== 'DISCONNECTED') {
       endSession();
     }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     setIsModalOpen(false);
   };
 
@@ -253,30 +309,170 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setAiTranscript('');
   };
 
+  const cancelConnecting = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (speechRecRef.current) {
+      speechRecRef.current.stop();
+      speechRecRef.current = null;
+    }
+    if (clientRef.current) {
+      clientRef.current.disconnect();
+      clientRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setConnectionState('IDLE');
+    setIsAiThinking(false);
+    setIsAiSpeaking(false);
+    setAudioLevel(0);
+    setErrorMessage(null);
+  };
+
+  // Human-friendly error translation helper
+  const translateError = (err: any): string => {
+    const msg = err.message || '';
+    const name = err.name || '';
+    if (name === 'NotAllowedError' || msg.includes('Permission denied') || msg.includes('not allowed')) {
+      return 'Microphone access was denied. Please allow microphone permissions in your browser address bar to speak with the Voice Assistant.';
+    }
+    if (name === 'NotFoundError' || msg.includes('DevicesNotFoundError')) {
+      return 'No microphone was detected on your computer. Please connect a headset or microphone and try again.';
+    }
+    if (name === 'NotReadableError') {
+      return 'Your microphone is currently being used by another application. Please close other voice apps and retry.';
+    }
+    if (
+      msg.includes('1011') ||
+      msg.includes('quota') ||
+      msg.includes('exceeded your current quota') ||
+      msg.includes('resource has been exhausted')
+    ) {
+      return 'Google AI Studio real-time voice streaming quota has been reached on this API key. You can still ask any questions or click demo prompts below to receive instant answers and verified business data powered by Gemini 3.8.';
+    }
+    if (msg.includes('1008') || msg.includes('Unregistered callers') || msg.includes('API key')) {
+      return 'API credential authentication notice. Please verify your GEMINI_API_KEY in .env.';
+    }
+    return msg || 'Failed to establish Gemini Live voice session.';
+  };
+
+  const askQuestion = async (questionText: string, alreadyInTranscript = false) => {
+    const query = questionText.trim();
+    if (!query) return;
+
+    if (isAiThinking) return;
+
+    setErrorMessage(null);
+    setIsAiThinking(true);
+    setUserTranscript(query);
+
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (!alreadyInTranscript) {
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substring(2, 9),
+          speaker: 'user',
+          text: query,
+          timestamp,
+          isPartial: false
+        }
+      ]);
+    }
+
+    // Check if live WebSocket is active and setup is confirmed
+    if (clientRef.current && clientRef.current.isSessionSetupConfirmed()) {
+      const sent = clientRef.current.sendTextMessage(query);
+      if (sent) {
+        console.log('[GeminiLiveContext] Question sent via active Live WebSocket session');
+        return;
+      }
+    }
+
+    // Fallback to verified server-side query with gemini-3.8-flash and Sleep Company live tools
+    try {
+      const historyPayload = turns.slice(-6).map((t) => ({
+        role: t.speaker === 'user' ? 'user' : 'model',
+        parts: [{ text: t.text }]
+      }));
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+      const res = await fetch('/api/gemini/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          conversationHistory: historyPayload
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.text) {
+        const errMsg = data.message || `Query failed with status ${res.status}`;
+        setErrorMessage(errMsg);
+        setIsAiThinking(false);
+        return;
+      }
+
+      if (data.toolsExecuted && Array.isArray(data.toolsExecuted) && data.toolsExecuted.length > 0) {
+        setToolEvents((prev) => [...data.toolsExecuted, ...prev]);
+        refreshProducts();
+      }
+
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substring(2, 9),
+          speaker: 'assistant',
+          text: data.text,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isPartial: false
+        }
+      ]);
+      setAiTranscript(data.text);
+      setIsAiThinking(false);
+
+      if (isVoiceOutputEnabled) {
+        speakAnswer(data.text);
+      }
+    } catch (err: any) {
+      setIsAiThinking(false);
+      if (err.name === 'AbortError') {
+        setErrorMessage('Gemini query timed out after 45 seconds. Please check your network connection.');
+      } else {
+        setErrorMessage(err.message || 'Failed to communicate with Gemini assistant service.');
+      }
+    }
+  };
+
   const startSession = async () => {
+    // Guard against duplicate clicks when already busy or connected
+    if (
+      connectionState === 'REQUESTING_MIC' ||
+      connectionState === 'FETCHING_TOKEN' ||
+      connectionState === 'CONNECTING' ||
+      connectionState === 'WAITING_FOR_SETUP' ||
+      connectionState === 'RECONNECTING_FALLBACK' ||
+      connectionState === 'LISTENING' ||
+      connectionState === 'SPEAKING'
+    ) {
+      console.log('[GeminiLiveContext] Session start ignored: already busy or connected.');
+      return;
+    }
+
     setErrorMessage(null);
     setIsAiThinking(false);
     setAudioLevel(0);
     setSessionDuration(0);
-
-    // Human-friendly error translation helper
-    const translateError = (err: any): string => {
-      const msg = err.message || '';
-      const name = err.name || '';
-      if (name === 'NotAllowedError' || msg.includes('Permission denied') || msg.includes('not allowed')) {
-        return 'Microphone access was denied. Please allow microphone permissions in your browser address bar to speak with the Voice Assistant.';
-      }
-      if (name === 'NotFoundError' || msg.includes('DevicesNotFoundError')) {
-        return 'No microphone was detected on your computer. Please connect a headset or microphone and try again.';
-      }
-      if (name === 'NotReadableError') {
-        return 'Your microphone is currently being used by another application. Please close other voice apps and retry.';
-      }
-      if (msg.includes('1008') || msg.includes('Unregistered callers') || msg.includes('API key')) {
-        return 'API credential authentication notice. Please verify your GEMINI_API_KEY in .env.';
-      }
-      return msg || 'Failed to establish Gemini Live voice session.';
-    };
 
     // Start session timer when connection succeeds
     if (timerRef.current) clearInterval(timerRef.current);
@@ -322,6 +518,13 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ];
           });
           setUserTranscript(evt.text);
+
+          // If speech is final and live WebSocket is not active or confirmed, trigger query
+          if (evt.isFinal) {
+            if (!clientRef.current || !clientRef.current.isSessionSetupConfirmed()) {
+              askQuestion(evt.text, true);
+            }
+          }
         },
         (err) => {
           console.warn('[GeminiLiveContext] Speech recognition notice:', err);
@@ -460,6 +663,9 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       clientRef.current.disconnect();
       clientRef.current = null;
     }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     setConnectionState('IDLE');
     setIsAiSpeaking(false);
     setIsAiThinking(false);
@@ -547,8 +753,12 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isMuted,
         startSession,
         endSession,
+        cancelConnecting,
         toggleMute,
         clearError,
+        askQuestion,
+        isVoiceOutputEnabled,
+        toggleVoiceOutput,
         products,
         updateProductPrice,
         resetCatalog,

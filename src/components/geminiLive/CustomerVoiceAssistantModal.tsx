@@ -10,6 +10,7 @@ import {
   Database,
   CheckCircle2,
   Volume2,
+  VolumeX,
   Radio,
   ChevronDown,
   ChevronUp,
@@ -20,6 +21,13 @@ import {
 } from 'lucide-react';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './CustomerVoiceAssistantModal.module.css';
+
+const DEMO_QUESTIONS = [
+  'What are the current offers on Ortho GRID mattresses?',
+  'What is the Queen size price for SmartGRID Ortho?',
+  'Can you explain the 100-night trial and warranty terms?',
+  'What No-Cost EMI options are available?'
+];
 
 export const CustomerVoiceAssistantModal: React.FC = () => {
   const {
@@ -44,11 +52,16 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
     errorMessage,
     toolEvents,
     isAiSpeaking,
+    isAiThinking,
     isMuted,
     startSession,
     endSession,
+    cancelConnecting,
     toggleMute,
     clearError,
+    askQuestion,
+    isVoiceOutputEnabled,
+    toggleVoiceOutput,
     products,
     updateProductPrice,
     resetCatalog,
@@ -60,6 +73,7 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<Record<string, number>>({});
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [customInput, setCustomInput] = useState('');
 
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -77,9 +91,10 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
   const isBusy =
     connectionState === 'REQUESTING_MIC' ||
     connectionState === 'FETCHING_TOKEN' ||
-    connectionState === 'CONNECTING';
+    connectionState === 'CONNECTING' ||
+    connectionState === 'WAITING_FOR_SETUP';
 
-  // Helper for 4 connection status pill states
+  // Helper for connection status pill with detailed state descriptions
   const renderConnectionPill = () => {
     if (errorMessage || connectionState === 'ERROR') {
       return (
@@ -89,11 +104,43 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
         </span>
       );
     }
-    if (isBusy || connectionState === 'RECONNECTING_FALLBACK') {
+    if (connectionState === 'REQUESTING_MIC') {
       return (
         <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
           <RefreshCw size={12} className={styles.spinIcon} />
-          <span>Connecting</span>
+          <span>Requesting Mic...</span>
+        </span>
+      );
+    }
+    if (connectionState === 'FETCHING_TOKEN') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
+          <RefreshCw size={12} className={styles.spinIcon} />
+          <span>Authorizing Token...</span>
+        </span>
+      );
+    }
+    if (connectionState === 'CONNECTING') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
+          <RefreshCw size={12} className={styles.spinIcon} />
+          <span>Opening WebSocket...</span>
+        </span>
+      );
+    }
+    if (connectionState === 'WAITING_FOR_SETUP') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
+          <RefreshCw size={12} className={styles.spinIcon} />
+          <span>Confirming Setup...</span>
+        </span>
+      );
+    }
+    if (connectionState === 'RECONNECTING_FALLBACK') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
+          <RefreshCw size={12} className={styles.spinIcon} />
+          <span>Switching Model...</span>
         </span>
       );
     }
@@ -241,6 +288,16 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   </span>
                 )}
                 <span>· Catalogue v{catalogVersion}</span>
+                <button
+                  type="button"
+                  className={`${styles.soundToggleBtn} ${isVoiceOutputEnabled ? styles.soundToggleActive : ''}`}
+                  onClick={toggleVoiceOutput}
+                  title={isVoiceOutputEnabled ? 'Spoken AI Voice Output: ON' : 'Spoken AI Voice Output: OFF'}
+                  aria-label="Toggle voice output"
+                >
+                  {isVoiceOutputEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+                  <span>{isVoiceOutputEnabled ? 'Voice Output ON' : 'Voice Output OFF'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -380,18 +437,19 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   </p>
 
                   <div className={styles.promptChipsGrid}>
-                    <div className={styles.promptChip}>
-                      &ldquo;What are the current offers on Ortho GRID mattresses?&rdquo;
-                    </div>
-                    <div className={styles.promptChip}>
-                      &ldquo;What is the Queen size price for SmartGRID Ortho?&rdquo;
-                    </div>
-                    <div className={styles.promptChip}>
-                      &ldquo;Can you explain the 100-night trial and warranty terms?&rdquo;
-                    </div>
-                    <div className={styles.promptChip}>
-                      &ldquo;What No-Cost EMI options are available?&rdquo;
-                    </div>
+                    {DEMO_QUESTIONS.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        className={styles.promptChip}
+                        onClick={() => askQuestion(q)}
+                        disabled={isAiThinking}
+                        aria-label={`Ask demo question: ${q}`}
+                      >
+                        <Sparkles size={12} color="#38bdf8" style={{ marginRight: 6, flexShrink: 0 }} />
+                        <span>&ldquo;{q}&rdquo;</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -429,8 +487,82 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   );
                 })
               )}
+
+              {isAiThinking && (
+                <div className={`${styles.turnRow} ${styles.turnAssistant}`}>
+                  <div className={styles.turnSpeakerMeta}>
+                    <span className={styles.assistantSpeakerBadge}>AI Assistant</span>
+                    <span>· Processing</span>
+                  </div>
+                  <div
+                    className={`${styles.turnBubble} ${styles.bubbleAssistant}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <Sparkles size={15} color="#38bdf8" className={styles.spinIcon} />
+                    <span>Gemini is generating response & querying business data...</span>
+                  </div>
+                </div>
+              )}
               <div ref={transcriptEndRef} />
             </div>
+
+            {/* Quick Demo Question Suggestions when conversation has started */}
+            {turns.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, padding: '6px 14px', overflowX: 'auto', background: 'rgba(15, 23, 42, 0.4)' }}>
+                {DEMO_QUESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    className={styles.promptChip}
+                    style={{ fontSize: '11px', padding: '4px 8px', whiteSpace: 'nowrap' }}
+                    onClick={() => askQuestion(q)}
+                    disabled={isAiThinking}
+                    aria-label={`Ask demo question: ${q}`}
+                  >
+                    <Sparkles size={11} color="#38bdf8" style={{ marginRight: 4, flexShrink: 0 }} />
+                    <span>{q}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Customer Question Input Composer */}
+            <form
+              className={styles.chatInputRow}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (customInput.trim()) {
+                  askQuestion(customInput.trim());
+                  setCustomInput('');
+                }
+              }}
+            >
+              <input
+                type="text"
+                className={styles.chatInput}
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                placeholder={
+                  isAiThinking
+                    ? 'Gemini is responding...'
+                    : 'Ask any question (e.g. recommend a queen-size mattress)...'
+                }
+                disabled={isAiThinking}
+              />
+              <button
+                type="submit"
+                className={styles.chatSendBtn}
+                disabled={isAiThinking || !customInput.trim()}
+                aria-label="Send question to Gemini"
+              >
+                {isAiThinking ? (
+                  <RefreshCw size={14} className={styles.spinIcon} />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                <span>Ask</span>
+              </button>
+            </form>
           </div>
 
           {/* VERIFIED TOOL INVOCATIONS DRAWER */}
@@ -696,18 +828,56 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
               </button>
             )}
 
-            {!isConnected ? (
-              <button
-                className={styles.startBtn}
-                onClick={startSession}
-                disabled={isBusy}
-                aria-label="Start Voice Conversation"
-              >
-                <Mic size={18} />
-                <span>{isBusy ? 'Connecting...' : 'Start Voice Conversation'}</span>
-              </button>
+            {isBusy ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button className={styles.startBtn} disabled style={{ opacity: 0.9 }}>
+                  <RefreshCw size={16} className={styles.spinIcon} />
+                  <span>
+                    {connectionState === 'REQUESTING_MIC'
+                      ? 'Requesting Mic...'
+                      : connectionState === 'FETCHING_TOKEN'
+                      ? 'Authorizing Token...'
+                      : connectionState === 'CONNECTING'
+                      ? 'Connecting WebSocket...'
+                      : 'Confirming Setup...'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.cancelBtn}
+                  onClick={cancelConnecting}
+                  aria-label="Cancel Connection Attempt"
+                >
+                  <X size={14} />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            ) : !isConnected ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {connectionState === 'ERROR' && (
+                  <button
+                    type="button"
+                    className={styles.retryBtn}
+                    onClick={startSession}
+                    aria-label="Retry Voice Connection"
+                  >
+                    <RefreshCw size={14} />
+                    <span>Retry Voice</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.startBtn}
+                  onClick={startSession}
+                  aria-label="Start Voice Conversation"
+                >
+                  <Mic size={18} />
+                  <span>Start Voice Conversation</span>
+                </button>
+              </div>
             ) : (
               <button
+                type="button"
                 className={styles.endBtn}
                 onClick={endSession}
                 aria-label="End Voice Conversation"

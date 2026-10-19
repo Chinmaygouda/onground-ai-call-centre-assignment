@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { handleGeminiTokenRequest, handleGeminiStatusRequest, handleGeminiModelsRequest } from './server/geminiTokenService';
+import { handleGeminiQueryRequest } from './server/geminiQueryService';
 
 function geminiLiveServerPlugin(): Plugin {
   return {
@@ -24,6 +25,11 @@ function geminiLiveServerPlugin(): Plugin {
         const activeModel = env.GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
         handleGeminiModelsRequest(req, res, activeKey, activeModel);
       });
+      server.middlewares.use('/api/gemini/query', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        const activeKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        handleGeminiQueryRequest(req, res, activeKey);
+      });
     },
     configurePreviewServer(server) {
       server.middlewares.use('/api/gemini/token', (req, res) => {
@@ -43,6 +49,11 @@ function geminiLiveServerPlugin(): Plugin {
         const activeKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         const activeModel = env.GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
         handleGeminiModelsRequest(req, res, activeKey, activeModel);
+      });
+      server.middlewares.use('/api/gemini/query', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        const activeKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        handleGeminiQueryRequest(req, res, activeKey);
       });
     }
   };
