@@ -4,3 +4,8 @@ dist-ssr
 *.local
 .vscode
 .idea
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db

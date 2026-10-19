@@ -86,7 +86,7 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 | **Shared App Shell** | Fixed 224px Sidebar, `#11392e` background, active state `#20443a` | **Done** | Exact mock tokens and geometry |
 | | Topbar 54px, `#184236`, Arvind Rajan profile (`AR`), OG Score 76, Star #3, Bell badge | **Done** | Status toggle (`On Queue` / `Away`), Date filter |
 | | Floating Action Pill: `DEMO`, `In-app call`, `Phone call`, shield icon | **Done** | Fixed bottom-right with active calling triggers |
-| **Dashboard** | 4 Top KPI Cards (OG Score 76, AHT 4m 12s, CSAT Today 94%, In Queue 4) | **Done** | Dark indigo `#2f3976` styling |
+| **Dashboard** | 4 Top KPI Cards (OG Score 76, AHT 4m 12s, CSAT Today 94%, In Queue 2) | **Done** | Dark indigo `#2f3976` styling |
 | | Today's Progress Card (14/25 calls handled, 6 hrs remaining) | **Done** | Forest `#0e251d` theme with emerald progress bar |
 | | Earnings Bar (₹5,200 / ₹6,000 target with monthly pace indicator) | **Done** | Dynamic calculation & visual progress |
 | | Who's Waiting list (high-priority waiting customers with wait timers) | **Done** | Instant click-to-call buttons |
