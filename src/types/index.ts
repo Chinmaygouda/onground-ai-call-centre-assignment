@@ -60,6 +60,7 @@ export interface RecentCall {
   timeText: string;
   duration: string;
   type: 'inbound' | 'outbound' | 'missed';
+  phone?: string;
   sopScore?: number;
   greetingPassed?: boolean;
   notes?: string;

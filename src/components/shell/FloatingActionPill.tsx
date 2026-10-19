@@ -28,15 +28,6 @@ export const FloatingActionPill: React.FC = () => {
     });
   };
 
-  const handlePhoneCall = () => {
-    startCall({
-      name: 'Mukunda (Demo Customer)',
-      phone: '+91 72041 04491',
-      mode: 'PHONE',
-      value: 8490,
-      product: 'Ortho GRID'
-    });
-  };
 
   return (
     <div className={styles.floatingWrapper}>
@@ -65,10 +56,15 @@ export const FloatingActionPill: React.FC = () => {
         <span>In-app call</span>
       </button>
 
-      <button className={styles.pillButton} onClick={handlePhoneCall} title="Trigger Phone Dialer (tel: protocol)">
+      <a
+        href="tel:+917204104491"
+        className={styles.pillButton}
+        title="Call demo customer Mukunda at +91 72041 04491 (opens device dialer)"
+        aria-label="Call Mukunda at +91 72041 04491 using device dialer"
+      >
         <Phone size={13} />
         <span>Phone call</span>
-      </button>
+      </a>
 
       <button
         className={styles.shieldIcon}

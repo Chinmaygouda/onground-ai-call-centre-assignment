@@ -7,6 +7,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
+import { ClickToCallButton } from '../common/ClickToCallButton';
 import styles from './DashboardView.module.css';
 
 export const DashboardView: React.FC = () => {
@@ -156,7 +157,11 @@ export const DashboardView: React.FC = () => {
                     <Headphones size={16} />
                   </div>
                   <div>
-                    <div className={styles.waitingName}>Priya Iyer</div>
+                    <div className={styles.waitingNameRow}>
+                      <span className={styles.waitingName}>Priya Iyer</span>
+                      <span className={styles.waitingPhone}>+91 98765 43210</span>
+                      <ClickToCallButton phone="+91 98765 43210" customerName="Priya Iyer" size="sm" />
+                    </div>
                     <div className={styles.waitingReason}>Likely billing dispute — flagged before</div>
                   </div>
                 </div>
@@ -169,7 +174,11 @@ export const DashboardView: React.FC = () => {
                     <Headphones size={16} />
                   </div>
                   <div>
-                    <div className={styles.waitingName}>Suresh Nair</div>
+                    <div className={styles.waitingNameRow}>
+                      <span className={styles.waitingName}>Suresh Nair</span>
+                      <span className={styles.waitingPhone}>+91 98450 11223</span>
+                      <ClickToCallButton phone="+91 98450 11223" customerName="Suresh Nair" size="sm" />
+                    </div>
                     <div className={styles.waitingReason}>Plan upgrade enquiry</div>
                   </div>
                 </div>

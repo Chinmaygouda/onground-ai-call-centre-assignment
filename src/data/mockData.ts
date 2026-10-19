@@ -183,6 +183,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: '10:42 AM · 4m 12s',
     duration: '4m 12s',
     type: 'inbound',
+    phone: '+91 72041 04491',
     sopScore: 92,
     greetingPassed: true,
     notes: 'Closed pricing query smoothly; discussed Ortho GRID 100-night trial.',
@@ -201,6 +202,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Yesterday · 2m 05s',
     duration: '2m 05s',
     type: 'outbound',
+    phone: '+91 98453 45678',
     sopScore: 88,
     greetingPassed: true,
     notes: 'Sent digital brochure and fabric sample link.'
@@ -212,6 +214,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Yesterday · —',
     duration: '—',
     type: 'missed',
+    phone: '',
     sopScore: 0,
     greetingPassed: false,
     notes: 'No answer on initial callback attempt.'
@@ -223,6 +226,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Today 11:20 AM · —',
     duration: '—',
     type: 'missed',
+    phone: '+91 98451 23456',
     sopScore: 0,
     greetingPassed: false
   },
@@ -233,6 +237,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Today 10:05 AM · —',
     duration: '—',
     type: 'missed',
+    phone: '+91 98452 34567',
     sopScore: 0,
     greetingPassed: false
   },
@@ -243,6 +248,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Yesterday 4:40 PM · —',
     duration: '—',
     type: 'missed',
+    phone: '+91 98453 45678',
     sopScore: 0,
     greetingPassed: false
   },
@@ -253,6 +259,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Yesterday 2:15 PM · —',
     duration: '—',
     type: 'missed',
+    phone: '+91 98454 56789',
     sopScore: 0,
     greetingPassed: false
   },
@@ -263,6 +270,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: 'Mon · 6m 40s',
     duration: '6m 40s',
     type: 'outbound',
+    phone: '+91 98452 34567',
     sopScore: 94,
     greetingPassed: true,
     notes: 'Comprehensive consultation on adjustable bed ergonomics.'

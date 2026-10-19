@@ -177,6 +177,45 @@
   color: #64748b;
 }
 
+.contactInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contactPhoneRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.contactPhoneText {
+  font-size: 12px;
+  color: #64748b;
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.nativeDialerActionBtn {
+  flex: 1;
+  justify-content: center;
+  background-color: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 9999px;
+  box-shadow: none;
+}
+
+.nativeDialerActionBtn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
 /* Quote Tag */
 .quotePill {
   background-color: #fef3c7;
