@@ -5,7 +5,7 @@ import { useAppState } from '../../context/AppStateContext';
 import styles from './FloatingActionPill.module.css';
 
 export const FloatingActionPill: React.FC = () => {
-  const { startCall } = useCalling();
+  const { startCall, tabSessionId } = useCalling();
   const { openLeadsModal } = useAppState();
   const [showSecurityTooltip, setShowSecurityTooltip] = useState(false);
 
@@ -16,9 +16,9 @@ export const FloatingActionPill: React.FC = () => {
 
   const handleInAppCall = () => {
     startCall({
-      name: 'Mukunda (AI Customer)',
+      name: 'Arvind Rajan (Peer Tab)',
       phone: '+91 72041 04491',
-      mode: 'AI_VOICE',
+      mode: 'WEBRTC_PEER',
       value: 8490,
       product: 'Ortho GRID'
     });
@@ -40,7 +40,11 @@ export const FloatingActionPill: React.FC = () => {
         DEMO
       </button>
 
-      <button className={styles.pillButton} onClick={handleInAppCall} title="Start Live In-App Audio Voice Call">
+      <button
+        className={styles.pillButton}
+        onClick={handleInAppCall}
+        title={`Start Live WebRTC In-App Call across browser tabs (Session: ${tabSessionId})`}
+      >
         <Phone size={13} />
         <span>In-app call</span>
       </button>
@@ -57,6 +61,14 @@ export const FloatingActionPill: React.FC = () => {
       >
         <ShieldCheck size={16} />
       </button>
+
+      {showSecurityTooltip && (
+        <div className={styles.securityTooltip}>
+          <div style={{ fontWeight: 700, marginBottom: '2px' }}>Audio & Privacy Shield</div>
+          <div>Tab Identity: <code>{tabSessionId}</code></div>
+          <div>Signaling: BroadcastChannel (Peer)</div>
+        </div>
+      )}
     </div>
   );
 };

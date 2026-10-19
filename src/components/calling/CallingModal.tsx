@@ -54,7 +54,16 @@ export const CallingModal: React.FC = () => {
           <Phone className={styles.pulseIcon} size={20} color="#38bdf8" />
           <div>
             <div style={{ fontWeight: 700, fontSize: '13px' }}>Incoming WebRTC In-App Call</div>
-            <div style={{ fontSize: '12px', color: '#94a3b8' }}>{incomingPeerCall.callerName}</div>
+            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+              {incomingPeerCall.callerName}
+              {incomingPeerCall.callerTabId && ` · [${incomingPeerCall.callerTabId}]`}
+            </div>
+            {incomingPeerCall.productInterest && (
+              <div style={{ fontSize: '11px', color: '#38bdf8' }}>
+                {incomingPeerCall.productInterest}
+                {incomingPeerCall.expectedValue ? ` · ₹${incomingPeerCall.expectedValue.toLocaleString()}` : ''}
+              </div>
+            )}
           </div>
           <div className={styles.bannerActions}>
             <button className={styles.acceptBtn} onClick={acceptIncomingPeerCall}>

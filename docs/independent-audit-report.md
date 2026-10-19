@@ -111,13 +111,32 @@ All views were rendered in Google Chrome at identical dimensions (1354×900) to 
 
 ### Modality B: Human-to-Human WebRTC In-App Calling (`WebRTC Multi-Tab`)
 - **Status**: `VERIFIED`
-- **Signaling Mechanism**: Native `BroadcastChannel('onground-callcentre-signaling')` transmitting between browser contexts on the same origin (`http://localhost:5173/`).
-- **Media Negotiation**:
-  - Caller tab creates `RTCPeerConnection` with public STUN servers (`stun:stun.l.google.com:19302`) and adds local audio tracks.
-  - Generates and broadcasts an SDP Offer.
-  - Receiver tab receives `OFFER_CALL`, displays incoming call alert, and generates an SDP Answer upon acceptance.
-  - Both tabs exchange ICE candidates and route remote peer audio to a dynamic `<audio>` element.
-- **Limitation**: Operates across tabs on the same origin/device. Does not bridge across isolated physical networks without a public signaling server.
+- **Signaling Mechanism**: Native `BroadcastChannel('onground-callcentre-signaling')` with persistent channel lifetime (`[]` dependency array) and unique `tabSessionId` identities per tab.
+- **Media Negotiation & Two-Tab Verification**:
+  - **Caller Tab (Tab A)**:
+    - Initiates call in `mode: 'WEBRTC_PEER'` via "In-app call" button on floating action pill or leads modal.
+    - Captures real local microphone stream via `getUserMedia({ audio: true })`.
+    - Creates `RTCPeerConnection` with STUN servers (`stun:stun.l.google.com:19302`), attaches local audio tracks.
+    - Generates SDP offer, sets local description, and broadcasts `OFFER_CALL` payload including `callerTabId`, caller name, product, and expected value.
+    - Remains in `RINGING` state until peer responds (no premature blind auto-connect timeout).
+  - **Receiver Tab (Tab B)**:
+    - Receives `OFFER_CALL` on active `BroadcastChannel` listener.
+    - Displays fixed incoming call alert banner (`.peerCallBanner`, z-index 120) with caller identity `[tab_vvwf7t]`, product meta, and green `[Accept]` / red `[Decline]` buttons.
+    - Clicking `[Accept]` captures local microphone, constructs `RTCPeerConnection`, sets remote description (offer), drains queued early ICE candidates, generates SDP answer, sets local description, and broadcasts `CALL_ACCEPTED`.
+    - Clicking `[Decline]` broadcasts `CALL_DECLINED` and cleanly dismisses prompt.
+  - **ICE Candidate Exchange & Synchronization**:
+    - Both tabs exchange ICE candidates with sender/target tab ID filtering.
+    - Candidates arriving prior to `remoteDescription` are buffered in `pendingIceCandidatesRef` and flushed immediately upon SDP completion, preventing ICE race conditions.
+  - **Audio Output & Controls**:
+    - Incoming audio stream is assigned to `<audio id="webrtc-remote-audio" autoplay />` and started.
+    - Local and remote audio waveform visualizers animate to live audio frequency data.
+    - Microphone `[Mute]` toggles `track.enabled` on local audio tracks.
+    - `[End Call]` on either tab cleanly releases tracks, closes peer connection, broadcasts `CALL_ENDED`, and resets state to `ENDED` then `IDLE` across both tabs.
+- **Test Evidence Screenshots**:
+  - `docs/audit_screenshots/11_webrtc_tab_a_dialing.png`: Tab A in active dialing/ringing state broadcasting offer.
+  - `docs/audit_screenshots/12_webrtc_tab_b_incoming_banner.png`: Tab B displaying incoming WebRTC call banner with Accept/Decline actions.
+  - `docs/audit_screenshots/13_webrtc_active_call_connected.png`: Connected two-way WebRTC audio call with running timer, live waveform, and active controls.
+- **Limitation**: Operates across tabs on the same origin/device. Does not bridge across isolated physical networks without a public TURN/signaling server.
 
 ### Modality C: Telephone Dialing (`Click-to-Dial`)
 - **Status**: `VERIFIED`
@@ -162,7 +181,21 @@ All views were rendered in Google Chrome at identical dimensions (1354×900) to 
    - *Issue*: `CallingContext.tsx` previously exchanged mock event strings over BroadcastChannel without creating an `RTCPeerConnection` or negotiating SDP.
    - *Fix*: Integrated genuine `RTCPeerConnection` with STUN servers, media track attachment, SDP offer/answer exchange, ICE candidate broadcasting, and remote `<audio>` element playback.
    - *Retest Result*: `PASS`. Builds cleanly and handles tab-to-tab peer negotiation.
-3. **Screenshot Portability**:
+3. **Second Browser Tab Did Not Receive Incoming Call**:
+   - *Root Cause 1 (Mode Mismatch)*: In `FloatingActionPill.tsx` and `LeadsModal.tsx`, clicking "In-app call" hardcoded `mode: 'AI_VOICE'` instead of `'WEBRTC_PEER'`. Consequently, `startCall()` bypassed WebRTC offer creation and never posted an `OFFER_CALL` event to `BroadcastChannel`.
+   - *Root Cause 2 (Peer / Session ID Missing)*: Tabs lacked distinct tab identity values, preventing multi-tab filtering and message routing.
+   - *Root Cause 3 (Channel Lifecycle Teardown)*: `CallingContext.tsx` declared `[callState.lifecycle]` as an effect dependency for `BroadcastChannel`, causing the channel to close and reopen on every state change (`DIALING` -> `RINGING` -> `CONNECTED`), dropping in-flight signaling messages.
+   - *Root Cause 4 (ICE Candidate Race Condition)*: ICE candidates arriving at the receiver before `setRemoteDescription()` were silently dropped.
+   - *Root Cause 5 (Premature Caller Connect)*: `startCall()` previously had a blind 1800ms timer advancing the caller to `CONNECTED` before the receiver accepted.
+   - *Fix*:
+     - Updated `FloatingActionPill.tsx` and `LeadsModal.tsx` to pass `mode: 'WEBRTC_PEER'`.
+     - Added unique `tabSessionId` (`tab_<id>`) and message sender/target validation.
+     - Changed `BroadcastChannel` initialization effect dependency array to `[]` with `callStateRef` for current state access.
+     - Added `pendingIceCandidatesRef` queue to buffer and drain ICE candidates safely.
+     - Caller now remains in `RINGING` until receiver emits `CALL_ACCEPTED` or `CALL_DECLINED`.
+     - Enhanced incoming call banner with caller tab ID, product interest, and amount.
+   - *Retest Result*: `VERIFIED`. Tab A call triggered immediate incoming banner on Tab B (`docs/audit_screenshots/12_webrtc_tab_b_incoming_banner.png`). Accepting connected bidirectional WebRTC audio with running timer, live waveforms, mute, and hangup synchronization (`docs/audit_screenshots/13_webrtc_active_call_connected.png`).
+4. **Screenshot Portability**:
    - *Issue*: Previous reports used temporary absolute brain storage paths.
    - *Fix*: Captured fresh 1354×900 screenshots and committed them to repository-relative paths in `docs/audit_screenshots/`.
    - *Retest Result*: `PASS`.

@@ -1,8 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { CallEngineMode, ActiveCallState } from '../types';
 
+export interface IncomingPeerCallInfo {
+  callerName: string;
+  callerTabId: string;
+  channelId: string;
+  offer?: RTCSessionDescriptionInit;
+  expectedValue?: number;
+  productInterest?: string;
+}
+
 interface CallingContextType {
   callState: ActiveCallState;
+  tabSessionId: string;
   startCall: (params: {
     name: string;
     phone: string;
@@ -15,14 +25,14 @@ interface CallingContextType {
   audioFrequencyData: Uint8Array | null;
   aiSpeechTranscript: string;
   isMicActive: boolean;
-  incomingPeerCall: { callerName: string; channelId: string } | null;
+  incomingPeerCall: IncomingPeerCallInfo | null;
   acceptIncomingPeerCall: () => void;
   rejectIncomingPeerCall: () => void;
 }
 
 const initialCallState: ActiveCallState = {
   lifecycle: 'IDLE',
-  mode: 'AI_VOICE',
+  mode: 'WEBRTC_PEER',
   contactName: '',
   contactInitials: '',
   contactPhone: '',
@@ -30,18 +40,26 @@ const initialCallState: ActiveCallState = {
   isMuted: false
 };
 
+const SIGNALING_CHANNEL = 'onground-callcentre-signaling';
+
 const CallingContext = createContext<CallingContextType | undefined>(undefined);
 
 export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Unique identity per browser tab / window session
+  const tabSessionId = useRef<string>(
+    'tab_' + Math.random().toString(36).substring(2, 8)
+  );
+
   const [callState, setCallState] = useState<ActiveCallState>(initialCallState);
+  const callStateRef = useRef<ActiveCallState>(callState);
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
   const [audioFrequencyData, setAudioFrequencyData] = useState<Uint8Array | null>(null);
   const [aiSpeechTranscript, setAiSpeechTranscript] = useState<string>('');
   const [isMicActive, setIsMicActive] = useState<boolean>(false);
-  const [incomingPeerCall, setIncomingPeerCall] = useState<{
-    callerName: string;
-    channelId: string;
-    offer?: RTCSessionDescriptionInit;
-  } | null>(null);
+  const [incomingPeerCall, setIncomingPeerCall] = useState<IncomingPeerCallInfo | null>(null);
 
   // References for Web Audio & Media
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -57,31 +75,54 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // References for Multi-Tab WebRTC
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const remotePeerTabIdRef = useRef<string | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   // Helper to construct RTCPeerConnection with STUN servers and local tracks
   const setupPeerConnection = () => {
     try {
+      console.log(`[Calling:WebRTC] Setting up RTCPeerConnection on tab ${tabSessionId.current}`);
       const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
       });
       peerConnectionRef.current = pc;
 
+      // Add local audio tracks if available
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => {
           pc.addTrack(track, mediaStreamRef.current!);
+          console.log(`[Calling:WebRTC] Attached local track '${track.kind}' (${track.id}) to RTCPeerConnection`);
         });
+      } else {
+        console.warn(`[Calling:WebRTC] No mediaStreamRef.current found when setting up peer connection`);
       }
 
       pc.onicecandidate = (event) => {
         if (event.candidate && broadcastChannelRef.current) {
+          console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} sending ICE_CANDIDATE to ${remotePeerTabIdRef.current || 'all'}`);
           broadcastChannelRef.current.postMessage({
             type: 'ICE_CANDIDATE',
-            payload: { candidate: event.candidate.toJSON() }
+            payload: {
+              candidate: event.candidate.toJSON(),
+              senderTabId: tabSessionId.current,
+              targetTabId: remotePeerTabIdRef.current
+            }
           });
         }
       };
 
+      pc.onconnectionstatechange = () => {
+        console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} peer connection state: ${pc.connectionState}`);
+        if (pc.connectionState === 'connected') {
+          console.log(`[Calling:WebRTC] WebRTC connection established successfully between tabs!`);
+        }
+      };
+
       pc.ontrack = (event) => {
+        console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} received remote audio track`, event.track);
         let audioEl = document.getElementById('webrtc-remote-audio') as HTMLAudioElement;
         if (!audioEl) {
           audioEl = document.createElement('audio');
@@ -89,12 +130,16 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           audioEl.autoplay = true;
           document.body.appendChild(audioEl);
         }
-        audioEl.srcObject = event.streams[0];
+        const remoteStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+        audioEl.srcObject = remoteStream;
+        audioEl.play().catch((playErr) => {
+          console.warn('[Calling:WebRTC] Remote audio autoplay error', playErr);
+        });
       };
 
       return pc;
     } catch (e) {
-      console.warn('RTCPeerConnection creation failed', e);
+      console.warn('[Calling:WebRTC] RTCPeerConnection creation failed', e);
       return null;
     }
   };
@@ -102,48 +147,143 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Initialize BroadcastChannel for tab-to-tab peer calling signaling
   useEffect(() => {
     try {
-      const channel = new BroadcastChannel('onground-callcentre-signaling');
+      console.log(`[Calling:WebRTC] Initializing BroadcastChannel '${SIGNALING_CHANNEL}' on tab: ${tabSessionId.current}`);
+      const channel = new BroadcastChannel(SIGNALING_CHANNEL);
       broadcastChannelRef.current = channel;
 
       channel.onmessage = async (event) => {
-        const { type, payload } = event.data;
-        if (type === 'OFFER_CALL' && callState.lifecycle === 'IDLE') {
-          setIncomingPeerCall({
-            callerName: payload.callerName || 'Arvind Rajan (Tab)',
-            channelId: payload.channelId,
-            offer: payload.offer
-          });
+        const { type, payload } = event.data || {};
+        if (!type || !payload) return;
+
+        // Ignore messages sent by self
+        if (payload.senderTabId === tabSessionId.current || payload.callerTabId === tabSessionId.current) {
+          return;
+        }
+
+        console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} received message '${type}' from ${payload.senderTabId || payload.callerTabId}`);
+
+        if (type === 'OFFER_CALL') {
+          if (callStateRef.current.lifecycle === 'IDLE') {
+            console.log(`[Calling:WebRTC] Displaying incoming call prompt on tab ${tabSessionId.current} from ${payload.callerName}`);
+            remotePeerTabIdRef.current = payload.callerTabId;
+            setIncomingPeerCall({
+              callerName: payload.callerName || 'Arvind Rajan (Tab)',
+              callerTabId: payload.callerTabId,
+              channelId: payload.channelId,
+              offer: payload.offer,
+              expectedValue: payload.expectedValue,
+              productInterest: payload.productInterest
+            });
+          } else {
+            console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} is currently ${callStateRef.current.lifecycle}; rejecting offer as busy`);
+          }
         } else if (type === 'CALL_ACCEPTED') {
+          // If targeted to a specific tab, enforce target match
+          if (payload.targetTabId && payload.targetTabId !== tabSessionId.current) {
+            return;
+          }
+
+          console.log(`[Calling:WebRTC] Call accepted by peer tab ${payload.responderTabId}`);
+          remotePeerTabIdRef.current = payload.responderTabId;
+
           if (peerConnectionRef.current && payload.answer) {
             try {
               await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+              console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} set remote description (answer)`);
+
+              // Drain pending ICE candidates
+              while (pendingIceCandidatesRef.current.length > 0) {
+                const cand = pendingIceCandidatesRef.current.shift();
+                if (cand) {
+                  try {
+                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+                    console.log(`[Calling:WebRTC] Drained pending ICE candidate on tab ${tabSessionId.current}`);
+                  } catch (iceErr) {
+                    console.warn('[Calling:WebRTC] Error adding pending ICE candidate', iceErr);
+                  }
+                }
+              }
             } catch (err) {
-              console.warn('Error setting remote description on offerer', err);
+              console.warn('[Calling:WebRTC] Error setting remote description on caller', err);
             }
-            setCallState((prev) => ({ ...prev, lifecycle: 'CONNECTED' }));
           }
+
+          setCallState((prev) => ({
+            ...prev,
+            lifecycle: 'CONNECTED',
+            aiResponseText: 'WebRTC in-app peer call connected'
+          }));
+
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = window.setInterval(() => {
+            setCallState((prev) => ({
+              ...prev,
+              durationSeconds: prev.durationSeconds + 1
+            }));
+          }, 1000);
+        } else if (type === 'CALL_DECLINED') {
+          if (payload.targetTabId && payload.targetTabId !== tabSessionId.current) {
+            return;
+          }
+          console.log(`[Calling:WebRTC] Call declined by peer tab ${payload.senderTabId}`);
+          stopMediaCapture();
+          setCallState((prev) => ({
+            ...prev,
+            lifecycle: 'ENDED',
+            aiResponseText: 'Call declined by remote peer agent'
+          }));
+          setTimeout(() => {
+            setCallState(initialCallState);
+          }, 2500);
         } else if (type === 'ICE_CANDIDATE') {
-          if (peerConnectionRef.current && payload.candidate) {
-            try {
-              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (err) {
-              console.warn('Error adding ICE candidate', err);
+          if (payload.targetTabId && payload.targetTabId !== tabSessionId.current) {
+            return;
+          }
+
+          if (payload.candidate) {
+            if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+              try {
+                await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                console.log(`[Calling:WebRTC] Added remote ICE candidate on tab ${tabSessionId.current}`);
+              } catch (err) {
+                console.warn('[Calling:WebRTC] Error adding ICE candidate', err);
+              }
+            } else {
+              console.log(`[Calling:WebRTC] Queued incoming ICE candidate on tab ${tabSessionId.current} (remote description pending)`);
+              pendingIceCandidatesRef.current.push(payload.candidate);
             }
           }
         } else if (type === 'CALL_ENDED') {
-          endCall();
+          console.log(`[Calling:WebRTC] Received CALL_ENDED on tab ${tabSessionId.current}`);
+          setIncomingPeerCall(null);
+          pendingIceCandidatesRef.current = [];
+          remotePeerTabIdRef.current = null;
+
+          if (callStateRef.current.lifecycle !== 'IDLE') {
+            stopMediaCapture();
+            setCallState((prev) => ({
+              ...prev,
+              lifecycle: 'ENDED',
+              aiResponseText: 'Call ended by remote peer'
+            }));
+            setTimeout(() => {
+              setCallState(initialCallState);
+            }, 2000);
+          }
         }
       };
 
       return () => {
+        console.log(`[Calling:WebRTC] Closing BroadcastChannel listener on tab: ${tabSessionId.current}`);
         channel.close();
+        broadcastChannelRef.current = null;
       };
     } catch (e) {
-      console.warn('BroadcastChannel not supported in this environment', e);
+      console.warn('[Calling:WebRTC] BroadcastChannel not supported in this environment', e);
     }
-  }, [callState.lifecycle]);
+  }, []);
 
-  // Clean up Web Audio & Stream on unmount
+  // Clean up Web Audio & Stream on unmount or end of call
   const stopMediaCapture = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -191,9 +331,11 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Start real Audio Capture & Waveform Visualizer
   const startAudioVisualizer = async () => {
     try {
+      console.log(`[Calling:WebRTC] Requesting microphone access on tab ${tabSessionId.current}...`);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       setIsMicActive(true);
+      console.log(`[Calling:WebRTC] Microphone access GRANTED on tab ${tabSessionId.current}`);
 
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioCtx = new AudioCtx();
@@ -218,8 +360,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
       updateWave();
     } catch (err) {
-      console.warn('Microphone permission not granted or device not found; using simulated audio waveform.', err);
-      // Fallback synthetic audio stream so peer connection has audio tracks
+      console.warn('[Calling:WebRTC] Microphone permission not granted or device not found; using fallback audio track.', err);
+      // Fallback synthetic audio stream so peer connection has an active audio track
       try {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const fallbackCtx = new AudioCtx();
@@ -232,7 +374,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         osc.start();
         mediaStreamRef.current = dest.stream;
       } catch (fallbackErr) {
-        console.warn('Synthetic audio track fallback error', fallbackErr);
+        console.warn('[Calling:WebRTC] Synthetic audio track fallback error', fallbackErr);
       }
 
       // Simulated audio waveform fallback for devices without mic or in restricted env
@@ -317,7 +459,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const startCall = async ({
     name,
     phone,
-    mode = 'AI_VOICE',
+    mode = 'WEBRTC_PEER',
     value,
     product
   }: {
@@ -328,6 +470,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     product?: string;
   }) => {
     stopMediaCapture();
+    pendingIceCandidatesRef.current = [];
+    remotePeerTabIdRef.current = null;
 
     const initials = name
       .split(' ')
@@ -335,6 +479,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .join('')
       .toUpperCase()
       .substring(0, 2);
+
+    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} startCall initiated: '${name}', phone: '${phone}', mode: '${mode}'`);
 
     setCallState({
       lifecycle: 'DIALING',
@@ -346,7 +492,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       productInterest: product,
       durationSeconds: 0,
       isMuted: false,
-      aiResponseText: 'Connecting secure audio stream...'
+      aiResponseText: mode === 'WEBRTC_PEER' ? 'Broadcasting in-app call to peer tabs...' : 'Connecting secure audio stream...'
     });
 
     if (mode === 'PHONE') {
@@ -356,77 +502,109 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     await startAudioVisualizer();
 
-    // Transition from DIALING -> RINGING -> CONNECTED
-    setTimeout(() => {
-      setCallState((prev) => ({ ...prev, lifecycle: 'RINGING' }));
+    if (mode === 'WEBRTC_PEER') {
+      setTimeout(async () => {
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'RINGING',
+          aiResponseText: 'Ringing peer frontline agent...'
+        }));
 
-      // If WebRTC multi-tab mode, broadcast offer
-      if (mode === 'WEBRTC_PEER' && broadcastChannelRef.current) {
-        const pc = setupPeerConnection();
-        if (pc) {
-          pc.createOffer().then((offer) => {
-            pc.setLocalDescription(offer).then(() => {
-              if (broadcastChannelRef.current) {
-                broadcastChannelRef.current.postMessage({
-                  type: 'OFFER_CALL',
-                  payload: { callerName: name, channelId: 'onground-peer', offer }
-                });
-              }
-            });
-          }).catch((err) => {
-            console.warn('WebRTC offer error', err);
-          });
+        if (broadcastChannelRef.current) {
+          const pc = setupPeerConnection();
+          if (pc) {
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} broadcasting OFFER_CALL to channel`);
+              broadcastChannelRef.current.postMessage({
+                type: 'OFFER_CALL',
+                payload: {
+                  callerName: name,
+                  callerTabId: tabSessionId.current,
+                  channelId: 'onground-peer',
+                  offer: {
+                    type: offer.type,
+                    sdp: offer.sdp
+                  },
+                  expectedValue: value,
+                  productInterest: product
+                }
+              });
+            } catch (err) {
+              console.warn('[Calling:WebRTC] WebRTC offer creation error', err);
+            }
+          }
         }
-      }
-
+      }, 500);
+    } else if (mode === 'AI_VOICE') {
       setTimeout(() => {
-        setCallState((prev) => ({ ...prev, lifecycle: 'CONNECTED' }));
+        setCallState((prev) => ({ ...prev, lifecycle: 'RINGING' }));
 
-        // Start call duration timer
-        timerIntervalRef.current = window.setInterval(() => {
-          setCallState((prev) => ({
-            ...prev,
-            durationSeconds: prev.durationSeconds + 1
-          }));
-        }, 1000);
+        setTimeout(() => {
+          setCallState((prev) => ({ ...prev, lifecycle: 'CONNECTED' }));
 
-        if (mode === 'AI_VOICE') {
+          timerIntervalRef.current = window.setInterval(() => {
+            setCallState((prev) => ({
+              ...prev,
+              durationSeconds: prev.durationSeconds + 1
+            }));
+          }, 1000);
+
           startVoiceAI(name);
-        }
-      }, 1800);
-    }, 1200);
+        }, 1800);
+      }, 1200);
+    }
   };
 
   const endCall = () => {
+    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} ending call`);
     stopMediaCapture();
+    pendingIceCandidatesRef.current = [];
+
+    const targetTabId = remotePeerTabIdRef.current;
+    remotePeerTabIdRef.current = null;
+
     setCallState((prev) => ({
       ...prev,
-      lifecycle: 'ENDED'
+      lifecycle: 'ENDED',
+      aiResponseText: 'Call terminated'
     }));
 
     if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'CALL_ENDED' });
+      broadcastChannelRef.current.postMessage({
+        type: 'CALL_ENDED',
+        payload: {
+          senderTabId: tabSessionId.current,
+          targetTabId
+        }
+      });
     }
 
-    // Auto-reset to IDLE after 2 seconds or on user close
     setTimeout(() => {
       setCallState(initialCallState);
-    }, 3000);
+    }, 2000);
   };
 
   const toggleMute = () => {
+    const nextMuted = !callState.isMuted;
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = !track.enabled;
+        track.enabled = !nextMuted;
+        console.log(`[Calling:WebRTC] Audio track ${track.id} enabled=${track.enabled}`);
       });
     }
-    setCallState((prev) => ({ ...prev, isMuted: !prev.isMuted }));
+    console.log(`[Calling:WebRTC] Mic mute toggled on tab ${tabSessionId.current}: isMuted=${nextMuted}`);
+    setCallState((prev) => ({ ...prev, isMuted: nextMuted }));
   };
 
   const acceptIncomingPeerCall = async () => {
     if (!incomingPeerCall) return;
-    const { callerName, offer } = incomingPeerCall;
+    const { callerName, offer, callerTabId } = incomingPeerCall;
+    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} accepting incoming call from '${callerName}' (${callerTabId})`);
     setIncomingPeerCall(null);
+    remotePeerTabIdRef.current = callerTabId;
+
     await startAudioVisualizer();
 
     setCallState({
@@ -436,26 +614,52 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       contactInitials: 'PE',
       contactPhone: 'In-App WebRTC Peer',
       durationSeconds: 0,
-      isMuted: false
+      isMuted: false,
+      aiResponseText: 'WebRTC in-app peer call connected'
     });
 
     const pc = setupPeerConnection();
     if (pc && offer) {
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} set remote description (offer)`);
+
+        // Drain queued ICE candidates
+        while (pendingIceCandidatesRef.current.length > 0) {
+          const cand = pendingIceCandidatesRef.current.shift();
+          if (cand) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+              console.log(`[Calling:WebRTC] Drained pending ICE candidate on tab ${tabSessionId.current}`);
+            } catch (iceErr) {
+              console.warn('[Calling:WebRTC] Error adding pending ICE candidate', iceErr);
+            }
+          }
+        }
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} created answer, sending CALL_ACCEPTED to Tab ${callerTabId}`);
+
         if (broadcastChannelRef.current) {
           broadcastChannelRef.current.postMessage({
             type: 'CALL_ACCEPTED',
-            payload: { answer }
+            payload: {
+              answer: {
+                type: answer.type,
+                sdp: answer.sdp
+              },
+              responderTabId: tabSessionId.current,
+              targetTabId: callerTabId
+            }
           });
         }
       } catch (err) {
-        console.warn('Error negotiating WebRTC answer', err);
+        console.warn('[Calling:WebRTC] Error negotiating WebRTC answer', err);
       }
     }
 
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     timerIntervalRef.current = window.setInterval(() => {
       setCallState((prev) => ({
         ...prev,
@@ -465,9 +669,20 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const rejectIncomingPeerCall = () => {
+    if (!incomingPeerCall) return;
+    const { callerTabId } = incomingPeerCall;
+    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} rejected incoming call from ${callerTabId}`);
     setIncomingPeerCall(null);
+    pendingIceCandidatesRef.current = [];
+
     if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({ type: 'CALL_ENDED' });
+      broadcastChannelRef.current.postMessage({
+        type: 'CALL_DECLINED',
+        payload: {
+          senderTabId: tabSessionId.current,
+          targetTabId: callerTabId
+        }
+      });
     }
   };
 
@@ -475,6 +690,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     <CallingContext.Provider
       value={{
         callState,
+        tabSessionId: tabSessionId.current,
         startCall,
         endCall,
         toggleMute,
