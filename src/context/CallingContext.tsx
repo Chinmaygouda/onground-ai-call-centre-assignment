@@ -219,6 +219,22 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updateWave();
     } catch (err) {
       console.warn('Microphone permission not granted or device not found; using simulated audio waveform.', err);
+      // Fallback synthetic audio stream so peer connection has audio tracks
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const fallbackCtx = new AudioCtx();
+        const osc = fallbackCtx.createOscillator();
+        const gain = fallbackCtx.createGain();
+        gain.gain.value = 0.01;
+        const dest = fallbackCtx.createMediaStreamDestination();
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start();
+        mediaStreamRef.current = dest.stream;
+      } catch (fallbackErr) {
+        console.warn('Synthetic audio track fallback error', fallbackErr);
+      }
+
       // Simulated audio waveform fallback for devices without mic or in restricted env
       const simulatedArray = new Uint8Array(32);
       const updateSimulatedWave = () => {
