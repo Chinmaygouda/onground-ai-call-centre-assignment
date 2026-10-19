@@ -10,7 +10,7 @@
 /* Dark Navy Header Banner */
 .headerBanner {
   background-color: var(--color-header-navy);
-  padding: 24px 32px 28px 32px;
+  padding: clamp(16px, 2.5vw, 24px) clamp(16px, 3vw, 32px);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -31,7 +31,7 @@
 }
 
 .agentName {
-  font-size: 22px;
+  font-size: clamp(18px, 2.5vw, 24px);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -50,11 +50,12 @@
 .kpiCard {
   background-color: var(--color-kpi-card);
   border-radius: 12px;
-  padding: 16px 20px;
+  padding: clamp(12px, 1.5vw, 16px) clamp(12px, 2vw, 20px);
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: transform var(--transition-fast), background-color var(--transition-fast);
+  min-width: 0;
 }
 
 .kpiCard:hover {
@@ -63,7 +64,7 @@
 }
 
 .kpiValue {
-  font-size: 26px;
+  font-size: clamp(20px, 2.4vw, 26px);
   font-weight: 700;
   color: #ffffff;
   line-height: 1.1;
@@ -111,10 +112,12 @@
 
 /* Main Dashboard Body */
 .dashboardBody {
-  padding: 24px 32px 80px 32px;
+  padding: clamp(16px, 2.5vw, 24px) clamp(12px, 2.5vw, 32px) max(88px, env(safe-area-inset-bottom, 0px) + 72px) clamp(12px, 2.5vw, 32px);
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .twoColRow {
@@ -480,3 +483,70 @@
   color: #64748b;
   font-weight: 500;
 }
+
+/* Responsive Breakpoints */
+@media (max-width: 1024px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .twoColRow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .progressMetricsRow {
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .waitingItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .waitingLeft {
+    width: 100%;
+  }
+
+  .waitingNameRow {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .earningsAmount {
+    font-size: 24px;
+  }
+
+  .progressNum {
+    font-size: 26px;
+  }
+
+  .barChartContainer {
+    padding: 0 4px;
+    height: 80px;
+  }
+
+  .barRect {
+    width: 90%;
+  }
+}
+
+@media (max-width: 380px) {
+  .kpiGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiValue {
+    font-size: 22px;
+  }
+
+  .kpiCard {
+    padding: 12px 14px;
+  }
+}
+

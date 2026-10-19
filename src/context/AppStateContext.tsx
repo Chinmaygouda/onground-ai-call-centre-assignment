@@ -24,6 +24,8 @@ interface AppStateContextType {
   setCurrentRoute: (route: AppRoute) => void;
   isPlanSubmenuOpen: boolean;
   setIsPlanSubmenuOpen: (open: boolean) => void;
+  isMobileNavOpen: boolean;
+  setIsMobileNavOpen: (open: boolean) => void;
   agent: AgentProfile;
   leads: Lead[];
   missedCalls: MissedCall[];
@@ -49,6 +51,7 @@ const AppStateContext = createContext<AppStateContextType | undefined>(undefined
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('dashboard');
   const [isPlanSubmenuOpen, setIsPlanSubmenuOpen] = useState<boolean>(true);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [agent] = useState<AgentProfile>(mockAgent);
   const [leads] = useState<Lead[]>(mockLeads);
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>(mockMissedCalls);
@@ -115,9 +118,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     <AppStateContext.Provider
       value={{
         currentRoute,
-        setCurrentRoute,
+        setCurrentRoute: (route: AppRoute) => {
+          setCurrentRoute(route);
+          setIsMobileNavOpen(false); // Auto-close mobile drawer on route transition
+        },
         isPlanSubmenuOpen,
         setIsPlanSubmenuOpen,
+        isMobileNavOpen,
+        setIsMobileNavOpen,
         agent,
         leads,
         missedCalls,

@@ -1,6 +1,6 @@
 .floatingWrapper {
   position: fixed;
-  bottom: 24px;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
   left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
   transform: translateX(-50%);
   display: flex;
@@ -13,6 +13,8 @@
   gap: 8px;
   z-index: 50;
   backdrop-filter: blur(12px);
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
 }
 
 .demoBadge {
@@ -24,6 +26,9 @@
   border-radius: 9999px;
   letter-spacing: 0.04em;
   transition: transform var(--transition-fast);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .demoBadge:hover {
@@ -39,7 +44,13 @@
   font-size: 12.5px;
   font-weight: 600;
   color: #334155;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .pillButton:hover {
@@ -73,6 +84,7 @@
 
 .voiceAssistantIcon {
   color: inherit;
+  flex-shrink: 0;
 }
 
 .liveIndicatorDot {
@@ -83,6 +95,7 @@
   box-shadow: 0 0 6px #22c55e;
   animation: pulseDot 1.4s ease-in-out infinite;
   margin-left: 2px;
+  flex-shrink: 0;
 }
 
 @keyframes pulseDot {
@@ -99,6 +112,7 @@
 .shieldIcon {
   width: 28px;
   height: 28px;
+  min-width: 28px;
   border-radius: 50%;
   background-color: #ecfdf5;
   color: #059669;
@@ -106,6 +120,8 @@
   align-items: center;
   justify-content: center;
   border: 1px solid #a7f3d0;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .securityTooltip {
@@ -123,4 +139,55 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 60;
+}
+
+/* Tablet & Mobile Adjustments */
+@media (max-width: 768px) {
+  .floatingWrapper {
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding: 4px 6px;
+    gap: 4px;
+  }
+
+  .pillButton {
+    padding: 5px 8px;
+    font-size: 11.5px;
+    gap: 4px;
+  }
+
+  .demoBadge {
+    padding: 4px 8px;
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 480px) {
+  .floatingWrapper {
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .floatingWrapper::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pillButton {
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  .floatingWrapper {
+    gap: 2px;
+    padding: 3px 4px;
+  }
+
+  .pillButton {
+    padding: 4px 5px;
+    font-size: 10.5px;
+  }
 }

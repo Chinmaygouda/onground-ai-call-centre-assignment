@@ -8,7 +8,9 @@
 }
 
 html, body {
-  height: 100%;
+  min-height: 100%;
+  height: 100vh;
+  height: 100dvh;
   width: 100%;
   font-family: var(--font-sans);
   font-size: 14px;
@@ -17,11 +19,16 @@ html, body {
   background-color: var(--color-bg-app);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #root {
-  height: 100%;
+  min-height: 100%;
+  height: 100vh;
+  height: 100dvh;
   width: 100%;
+  max-width: 100%;
   display: flex;
   overflow: hidden;
 }
@@ -74,3 +81,28 @@ dialog::backdrop {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.7);
 }
+
+/* Accessibility Focus States */
+:focus-visible {
+  outline: 2px solid var(--color-emerald, #10b981);
+  outline-offset: 2px;
+}
+
+/* Reduced Motion Mode */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Common Responsive Utilities */
+.responsive-page-container {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+

@@ -21,6 +21,7 @@
   max-width: 96vw;
   height: 860px;
   max-height: 94vh;
+  max-height: 94dvh;
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
@@ -753,7 +754,7 @@
 
 /* Modal Footer */
 .modalFooter {
-  padding: 16px 24px;
+  padding: 14px clamp(12px, 2.5vw, 24px) max(14px, env(safe-area-inset-bottom, 0px)) clamp(12px, 2.5vw, 24px);
   background: #0b1120;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
@@ -761,6 +762,7 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  box-sizing: border-box;
 }
 
 .footerActions {
@@ -851,12 +853,57 @@
 }
 
 @media (max-width: 640px) {
+  .modalOverlay {
+    padding: 0;
+  }
+
   .promptChipsGrid {
     grid-template-columns: 1fr;
   }
+
   .modalCard {
     height: 100vh;
-    max-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    max-width: 100vw;
     border-radius: 0;
+    border: none;
+  }
+
+  .modalHeader {
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+  }
+
+  .headerTitle {
+    font-size: 16px;
+  }
+
+  .headerIconWrapper {
+    width: 36px;
+    height: 36px;
+  }
+
+  .modalFooter {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .footerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .startBtn,
+  .endBtn {
+    flex: 1;
+    justify-content: center;
+    min-height: var(--touch-target-min, 44px);
+  }
+
+  .muteBtn {
+    min-height: var(--touch-target-min, 44px);
   }
 }
+
