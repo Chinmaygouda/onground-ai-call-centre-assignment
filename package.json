@@ -8,10 +8,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/voice-assistant-ui.test.ts && tsx tests/mode3-gemini-live-sync.test.ts && tsx tests/click-to-call.test.ts",
+    "test": "tsx tests/voice-assistant-ui.test.ts && tsx tests/mode3-gemini-live-sync.test.ts && tsx tests/click-to-call.test.ts && tsx tests/responsive-layout.test.ts",
     "test:ui": "tsx tests/voice-assistant-ui.test.ts",
     "test:mode3": "tsx tests/mode3-gemini-live-sync.test.ts",
-    "test:dialer": "tsx tests/click-to-call.test.ts"
+    "test:dialer": "tsx tests/click-to-call.test.ts",
+    "test:responsive": "tsx tests/responsive-layout.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

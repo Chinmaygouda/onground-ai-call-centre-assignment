@@ -107,10 +107,11 @@
 /* Touch targets on mobile screens */
 @media (max-width: 640px) {
   .sizeSm {
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
-    min-height: 34px;
-    padding: 6px;
+    width: var(--touch-target-compact, 36px);
+    height: var(--touch-target-compact, 36px);
+    min-width: var(--touch-target-compact, 36px);
+    min-height: var(--touch-target-compact, 36px);
+    padding: 7px;
   }
 }
+

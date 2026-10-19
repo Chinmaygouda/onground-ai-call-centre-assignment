@@ -10,7 +10,8 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronRight,
-  Headphones
+  Headphones,
+  X
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
@@ -18,7 +19,15 @@ import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './Sidebar.module.css';
 
 export const Sidebar: React.FC = () => {
-  const { currentRoute, setCurrentRoute, isPlanSubmenuOpen, setIsPlanSubmenuOpen } = useAppState();
+  const {
+    currentRoute,
+    setCurrentRoute,
+    isPlanSubmenuOpen,
+    setIsPlanSubmenuOpen,
+    isMobileNavOpen,
+    setIsMobileNavOpen,
+    agent
+  } = useAppState();
   const { startCall } = useCalling();
   const { openModal, connectionState } = useGeminiLive();
 
@@ -43,10 +52,31 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.logoContainer}>
-        <span className={styles.logoText}>On-Ground.ai</span>
-      </div>
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      {isMobileNavOpen && (
+        <div
+          className={styles.mobileBackdrop}
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`${styles.sidebar} ${isMobileNavOpen ? styles.sidebarMobileOpen : ''}`}>
+        <div className={styles.logoContainer}>
+          <div className={styles.brandRow}>
+            <div className={styles.logoBadge}>OG</div>
+            <span className={styles.logoText}>On-Ground.ai</span>
+          </div>
+          <button
+            className={styles.closeDrawerBtn}
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-label="Close navigation drawer"
+            title="Close navigation"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
       <nav className={styles.navContainer}>
         {/* Dashboard */}
@@ -140,7 +170,33 @@ export const Sidebar: React.FC = () => {
             {connectionState === 'LISTENING' || connectionState === 'SPEAKING' ? 'LIVE' : 'LIVE API'}
           </span>
         </button>
+
+        {/* Mobile Shift & Agent Info (shown in mobile drawer) */}
+        <div className={styles.mobileDrawerFooter}>
+          <div className={styles.mobileAgentRow}>
+            <div className={styles.mobileAvatar}>{agent.initials}</div>
+            <div className={styles.mobileAgentInfo}>
+              <div className={styles.mobileAgentName}>{agent.name}</div>
+              <div className={styles.mobileAgentRole}>{agent.company} · Shift active</div>
+            </div>
+          </div>
+          <div className={styles.mobileStatsGrid}>
+            <div className={styles.mobileStatBadge}>
+              <span className={styles.mobileStatLabel}>OG Score</span>
+              <span className={styles.mobileStatVal}>{agent.ogScore}</span>
+            </div>
+            <div className={styles.mobileStatBadge}>
+              <span className={styles.mobileStatLabel}>Rank</span>
+              <span className={styles.mobileStatValAmber}>#{agent.rank}</span>
+            </div>
+            <div className={styles.mobileStatBadge}>
+              <span className={styles.mobileStatLabel}>Queue</span>
+              <span className={styles.mobileStatValCyan}>{agent.queueStatus}</span>
+            </div>
+          </div>
+        </div>
       </nav>
     </aside>
+    </>
   );
 };

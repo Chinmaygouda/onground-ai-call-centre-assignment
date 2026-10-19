@@ -8,7 +8,7 @@
 }
 
 .calendarHeader {
-  padding: 24px 32px 16px 32px;
+  padding: clamp(16px, 2.5vw, 24px) clamp(16px, 3vw, 32px) 16px clamp(16px, 3vw, 32px);
   background-color: #ffffff;
   border-bottom: 1px solid var(--color-border-subtle);
   display: flex;
@@ -23,7 +23,7 @@
 }
 
 .calendarTitle {
-  font-size: 18px;
+  font-size: clamp(16px, 2.2vw, 18px);
   font-weight: 700;
   color: #0f172a;
 }
@@ -34,7 +34,7 @@
 }
 
 .syncNoticeBanner {
-  margin: 16px 32px 0 32px;
+  margin: 16px clamp(16px, 3vw, 32px) 0 clamp(16px, 3vw, 32px);
   background-color: #eff6ff;
   border: 1px solid #bfdbfe;
   border-radius: 10px;
@@ -47,24 +47,27 @@
 }
 
 .calendarBody {
-  padding: 24px 32px 80px 32px;
+  padding: clamp(16px, 2.5vw, 24px) clamp(12px, 2.5vw, 32px) max(88px, env(safe-area-inset-bottom, 0px) + 72px) clamp(12px, 2.5vw, 32px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 24px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .gridCard {
-  width: 680px;
-  max-width: 100%;
+  width: 100%;
+  max-width: 680px;
   background-color: #ffffff;
   border-radius: 16px;
   border: 1px solid var(--color-border-subtle);
-  padding: 24px;
+  padding: clamp(14px, 2.5vw, 24px);
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 20px;
+  box-sizing: border-box;
 }
 
 .monthNavHeader {
@@ -214,4 +217,38 @@
   background-color: #eff6ff;
   padding: 4px 10px;
   border-radius: 6px;
+  white-space: nowrap;
 }
+
+@media (max-width: 520px) {
+  .daysGrid {
+    gap: 4px;
+  }
+
+  .dayCell {
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  .eventDot {
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
+  }
+
+  .weekdaysHeader {
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .monthTitle {
+    font-size: 14.5px;
+  }
+
+  .agendaCard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+

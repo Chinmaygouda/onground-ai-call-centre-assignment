@@ -13,6 +13,8 @@ import { CallingModal } from './components/calling/CallingModal';
 import { GeminiLiveProvider } from './context/GeminiLiveContext';
 import { CustomerVoiceAssistantModal } from './components/geminiLive/CustomerVoiceAssistantModal';
 
+import styles from './App.module.css';
+
 const AppContent: React.FC = () => {
   const { currentRoute } = useAppState();
 
@@ -39,18 +41,19 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* 224px Fixed Sidebar */}
+    <div className={styles.appRoot}>
+      {/* Sidebar: in-flow on desktop, adaptive off-canvas drawer on mobile */}
       <Sidebar />
 
-      {/* Main Content Region */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
-        {/* 54px Fixed Topbar */}
+      {/* Main Content Region with min-width: 0 protection */}
+      <div className={styles.mainContentRegion}>
         <Topbar />
 
         {/* Dynamic Route Content */}
-        <main style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {renderActiveRoute()}
+        <main className={styles.routeMain}>
+          <div className={styles.routeInner}>
+            {renderActiveRoute()}
+          </div>
         </main>
 
         {/* Floating Action Pill */}

@@ -1,11 +1,10 @@
-import React from 'react';
-import { Bell, Calendar as CalendarIcon, Star, Headphones } from 'lucide-react';
+import { Bell, Calendar as CalendarIcon, Star, Headphones, Menu } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './Topbar.module.css';
 
 export const Topbar: React.FC = () => {
-  const { agent, currentRoute, setCurrentRoute } = useAppState();
+  const { agent, currentRoute, setCurrentRoute, isMobileNavOpen, setIsMobileNavOpen } = useAppState();
   const { openModal, connectionState } = useGeminiLive();
 
   const handleDateClick = () => {
@@ -16,8 +15,16 @@ export const Topbar: React.FC = () => {
 
   return (
     <header className={styles.topbar}>
-      {/* Brand */}
+      {/* Brand & Mobile Hamburger */}
       <div className={styles.brandSection}>
+        <button
+          className={styles.hamburgerBtn}
+          onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
+          aria-label={isMobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          title="Toggle Navigation"
+        >
+          <Menu size={20} />
+        </button>
         <div className={styles.brandBadge}>OG</div>
         <span className={styles.brandName}>On-Ground.ai</span>
       </div>
