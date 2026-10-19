@@ -37,7 +37,11 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [audioFrequencyData, setAudioFrequencyData] = useState<Uint8Array | null>(null);
   const [aiSpeechTranscript, setAiSpeechTranscript] = useState<string>('');
   const [isMicActive, setIsMicActive] = useState<boolean>(false);
-  const [incomingPeerCall, setIncomingPeerCall] = useState<{ callerName: string; channelId: string } | null>(null);
+  const [incomingPeerCall, setIncomingPeerCall] = useState<{
+    callerName: string;
+    channelId: string;
+    offer?: RTCSessionDescriptionInit;
+  } | null>(null);
 
   // References for Web Audio & Media
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -54,6 +58,47 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
+  // Helper to construct RTCPeerConnection with STUN servers and local tracks
+  const setupPeerConnection = () => {
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      peerConnectionRef.current = pc;
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => {
+          pc.addTrack(track, mediaStreamRef.current!);
+        });
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({
+            type: 'ICE_CANDIDATE',
+            payload: { candidate: event.candidate.toJSON() }
+          });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        let audioEl = document.getElementById('webrtc-remote-audio') as HTMLAudioElement;
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = 'webrtc-remote-audio';
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+        }
+        audioEl.srcObject = event.streams[0];
+      };
+
+      return pc;
+    } catch (e) {
+      console.warn('RTCPeerConnection creation failed', e);
+      return null;
+    }
+  };
+
   // Initialize BroadcastChannel for tab-to-tab peer calling signaling
   useEffect(() => {
     try {
@@ -65,11 +110,16 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (type === 'OFFER_CALL' && callState.lifecycle === 'IDLE') {
           setIncomingPeerCall({
             callerName: payload.callerName || 'Arvind Rajan (Tab)',
-            channelId: payload.channelId
+            channelId: payload.channelId,
+            offer: payload.offer
           });
         } else if (type === 'CALL_ACCEPTED') {
           if (peerConnectionRef.current && payload.answer) {
-            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+            try {
+              await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+            } catch (err) {
+              console.warn('Error setting remote description on offerer', err);
+            }
             setCallState((prev) => ({ ...prev, lifecycle: 'CONNECTED' }));
           }
         } else if (type === 'ICE_CANDIDATE') {
@@ -77,7 +127,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             try {
               await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
             } catch (err) {
-              console.error('Error adding ICE candidate', err);
+              console.warn('Error adding ICE candidate', err);
             }
           }
         } else if (type === 'CALL_ENDED') {
@@ -121,6 +171,18 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
+    }
+    if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.close();
+      } catch {
+        // ignore
+      }
+      peerConnectionRef.current = null;
+    }
+    const audioEl = document.getElementById('webrtc-remote-audio') as HTMLAudioElement;
+    if (audioEl) {
+      audioEl.srcObject = null;
     }
     setIsMicActive(false);
     setAudioFrequencyData(null);
@@ -284,10 +346,21 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // If WebRTC multi-tab mode, broadcast offer
       if (mode === 'WEBRTC_PEER' && broadcastChannelRef.current) {
-        broadcastChannelRef.current.postMessage({
-          type: 'OFFER_CALL',
-          payload: { callerName: name, channelId: 'onground-peer' }
-        });
+        const pc = setupPeerConnection();
+        if (pc) {
+          pc.createOffer().then((offer) => {
+            pc.setLocalDescription(offer).then(() => {
+              if (broadcastChannelRef.current) {
+                broadcastChannelRef.current.postMessage({
+                  type: 'OFFER_CALL',
+                  payload: { callerName: name, channelId: 'onground-peer', offer }
+                });
+              }
+            });
+          }).catch((err) => {
+            console.warn('WebRTC offer error', err);
+          });
+        }
       }
 
       setTimeout(() => {
@@ -336,24 +409,35 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const acceptIncomingPeerCall = async () => {
     if (!incomingPeerCall) return;
+    const { callerName, offer } = incomingPeerCall;
     setIncomingPeerCall(null);
     await startAudioVisualizer();
 
     setCallState({
       lifecycle: 'CONNECTED',
       mode: 'WEBRTC_PEER',
-      contactName: incomingPeerCall.callerName,
+      contactName: callerName,
       contactInitials: 'PE',
       contactPhone: 'In-App WebRTC Peer',
       durationSeconds: 0,
       isMuted: false
     });
 
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({
-        type: 'CALL_ACCEPTED',
-        payload: { answer: 'accepted' }
-      });
+    const pc = setupPeerConnection();
+    if (pc && offer) {
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({
+            type: 'CALL_ACCEPTED',
+            payload: { answer }
+          });
+        }
+      } catch (err) {
+        console.warn('Error negotiating WebRTC answer', err);
+      }
     }
 
     timerIntervalRef.current = window.setInterval(() => {
