@@ -12,6 +12,7 @@ import { LeadsModal } from './components/leads/LeadsModal';
 import { CallingModal } from './components/calling/CallingModal';
 import { GeminiLiveProvider } from './context/GeminiLiveContext';
 import { CustomerVoiceAssistantModal } from './components/geminiLive/CustomerVoiceAssistantModal';
+import { CustomerCallbackModal } from './components/callback/CustomerCallbackModal';
 
 import styles from './App.module.css';
 
@@ -64,6 +65,7 @@ const AppContent: React.FC = () => {
       <LeadsModal />
       <CallingModal />
       <CustomerVoiceAssistantModal />
+      <CustomerCallbackModal />
     </div>
   );
 };

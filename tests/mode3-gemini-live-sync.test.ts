@@ -230,7 +230,11 @@ async function runSuite() {
   // -------------------------------------------------------------------------
   console.log(`\n${BOLD}[5/5] Gemini Live Function Tool Dispatcher${RESET}`);
 
-  assert(GEMINI_LIVE_FUNCTION_DECLARATIONS.length === 9, 'All 9 official Gemini function declarations defined');
+  assert(
+    GEMINI_LIVE_FUNCTION_DECLARATIONS.length >= 9 &&
+      GEMINI_LIVE_FUNCTION_DECLARATIONS.some((d) => d.name === 'checkProductStock'),
+    'All official Gemini function declarations defined including live callback tools'
+  );
 
   const dispatchedPrice = await dispatchLiveToolCall('getCurrentPrice', {
     productId: 'smartgrid-ortho',

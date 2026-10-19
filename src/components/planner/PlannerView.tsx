@@ -27,7 +27,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
     openLeadsModal,
     selectedCallReview,
     setSelectedCallReview,
-    resolveMissedCall
+    openCallbackModal
   } = useAppState();
 
   const { startCall } = useCalling();
@@ -40,15 +40,8 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
   const totalPages = Math.ceil(leads.length / pageSize) || 3;
   const paginatedLeads = leads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const handleCallbackClick = (callId: string, name: string, phone: string, value: number) => {
-    resolveMissedCall(callId);
-    startCall({
-      name,
-      phone,
-      mode: 'AI_VOICE',
-      value,
-      product: 'Sleep Company Follow-up'
-    });
+  const handleCallbackClick = (call: (typeof missedCalls)[0]) => {
+    openCallbackModal(call);
   };
 
   const handleRecentCallClick = (call: RecentCall) => {
@@ -218,11 +211,26 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                       )}
                     </div>
 
+                    {call.isResolved && (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: '#059669',
+                          backgroundColor: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          padding: '3px 8px',
+                          borderRadius: '9999px',
+                          marginRight: '8px'
+                        }}
+                      >
+                        {call.tag && call.tag.includes('Callback Requested') ? 'Callback Scheduled' : 'Callback Handled'}
+                      </span>
+                    )}
+
                     <button
                       className={styles.callbackBtn}
-                      onClick={() =>
-                        handleCallbackClick(call.id, call.name, call.phone, call.expectedValue)
-                      }
+                      onClick={() => handleCallbackClick(call)}
                       title={`Call back ${call.name}`}
                     >
                       <PhoneCall size={14} />

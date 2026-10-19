@@ -110,6 +110,24 @@ export interface IBusinessDataProvider {
     codAvailable: boolean;
   }>>;
   getApprovedFAQ(topic: string): Promise<BusinessDataResult<ApprovedFAQ[]>>;
+  checkProductStock(productIdOrKeyword: string, sizeOrVariant?: string): Promise<BusinessDataResult<{
+    productName: string;
+    size: string;
+    inStock: boolean;
+    stockQuantity: number;
+    warehouseLocation: string;
+    leadTimeDays: string;
+    availableStores: string[];
+  }>>;
+  scheduleFollowupRequest(customerName: string, phone: string, reason: string, preferredTime?: string): Promise<BusinessDataResult<{
+    ticketId: string;
+    customerName: string;
+    phone: string;
+    scheduledWindow: string;
+    reason: string;
+    assignedAgent: string;
+    status: string;
+  }>>;
 
   // Dynamic Cache & Live Synchronization Methods
   invalidateCache(key?: string): void;

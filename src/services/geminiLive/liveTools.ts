@@ -148,6 +148,52 @@ export const GEMINI_LIVE_FUNCTION_DECLARATIONS = [
       },
       required: ['topic']
     }
+  },
+  {
+    name: 'checkProductStock',
+    description:
+      'Check live verified warehouse inventory, available units in stock, and dispatch timeline for a product and size.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        productId: {
+          type: 'STRING',
+          description: "Product ID or name, e.g. 'smartgrid-ortho', 'smartgrid-luxe', 'elevate-bed'"
+        },
+        sizeOrVariant: {
+          type: 'STRING',
+          description: "Size or variant, e.g. 'Queen (78x60)', 'King (78x72)', 'Single'"
+        }
+      },
+      required: ['productId']
+    }
+  },
+  {
+    name: 'scheduleFollowupRequest',
+    description:
+      'Record an official human callback or follow-up task when a customer requests to be called back or when stock/specifications require human confirmation.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        customerName: {
+          type: 'STRING',
+          description: 'Customer name'
+        },
+        phone: {
+          type: 'STRING',
+          description: 'Customer contact phone number'
+        },
+        reason: {
+          type: 'STRING',
+          description: 'Reason for callback or product of interest'
+        },
+        preferredTime: {
+          type: 'STRING',
+          description: 'Preferred callback window (e.g. "Within 2 hours", "Today Evening", "Tomorrow Morning")'
+        }
+      },
+      required: ['customerName', 'reason']
+    }
   }
 ];
 
@@ -229,6 +275,29 @@ export async function dispatchLiveToolCall(
       return {
         output: res,
         logSummary: `Looked up FAQ for topic '${args.topic}' -> ${res.data?.length || 0} FAQ item(s)`
+      };
+    }
+
+    case 'checkProductStock': {
+      const res = await businessDataProvider.checkProductStock(args.productId, args.sizeOrVariant);
+      return {
+        output: res,
+        logSummary: res.verified
+          ? `Verified inventory for ${res.data?.productName} (${res.data?.size}): ${res.data?.stockQuantity} units available at ${res.data?.warehouseLocation}`
+          : `Unverified inventory for '${args.productId}': ${res.message}`
+      };
+    }
+
+    case 'scheduleFollowupRequest': {
+      const res = await businessDataProvider.scheduleFollowupRequest(
+        args.customerName,
+        args.phone,
+        args.reason,
+        args.preferredTime
+      );
+      return {
+        output: res,
+        logSummary: `Scheduled human follow-up ticket ${res.data?.ticketId} for ${res.data?.customerName} (${res.data?.scheduledWindow})`
       };
     }
 

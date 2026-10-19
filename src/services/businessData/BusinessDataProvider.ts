@@ -2,6 +2,7 @@ import {
   IBusinessDataProvider,
   BusinessDataResult,
   VerifiedProduct,
+  ProductVariant,
   VerifiedOffer,
   VerifiedPolicy,
   ApprovedFAQ,
@@ -515,6 +516,108 @@ export class BusinessDataProvider implements IBusinessDataProvider {
 
   public resetCatalog() {
     this.resetToDefault();
+  }
+
+  public async checkProductStock(
+    productIdOrKeyword: string,
+    sizeOrVariant?: string
+  ): Promise<
+    BusinessDataResult<{
+      productName: string;
+      size: string;
+      inStock: boolean;
+      stockQuantity: number;
+      warehouseLocation: string;
+      leadTimeDays: string;
+      availableStores: string[];
+    }>
+  > {
+    const targetId = (productIdOrKeyword || '').toLowerCase().trim();
+    const product = this.products.find(
+      (p) =>
+        p.id.toLowerCase() === targetId ||
+        p.slug.toLowerCase().includes(targetId) ||
+        p.name.toLowerCase().includes(targetId)
+    );
+
+    if (!product) {
+      return {
+        verified: false,
+        error: 'PRODUCT_NOT_FOUND',
+        message: `Could not verify stock for '${productIdOrKeyword}'. This product is not in the verified catalogue. Would you like to request a human callback?`
+      };
+    }
+
+    let selectedVariant = product.variants[0];
+    if (sizeOrVariant && sizeOrVariant.trim() !== '') {
+      const match = product.variants.find((v: ProductVariant) =>
+        v.size.toLowerCase().includes(sizeOrVariant.toLowerCase())
+      );
+      if (match) {
+        selectedVariant = match;
+      }
+    }
+
+    const stockMap: Record<string, number> = {
+      'smartgrid-ortho': 14,
+      'smartgrid-luxe': 8,
+      'ortho-grid': 14,
+      'smart-luxe': 8,
+      'elevate-bed': 5,
+      'ergotech-recliner': 12
+    };
+
+    const stockQuantity = stockMap[product.id] || stockMap[product.slug] || 10;
+    const metadata = this.generateMetadata(`STOCK-${product.id}-${selectedVariant.sku}`);
+
+    return {
+      verified: true,
+      data: {
+        productName: product.name,
+        size: selectedVariant.size,
+        inStock: selectedVariant.inStock,
+        stockQuantity,
+        warehouseLocation: 'Bengaluru Central Fulfillment Hub',
+        leadTimeDays: '2-3 business days',
+        availableStores: ['Indiranagar Store', 'Koramangala Store', 'Whitefield Store']
+      },
+      metadata
+    };
+  }
+
+  public async scheduleFollowupRequest(
+    customerName: string,
+    phone: string,
+    reason: string,
+    preferredTime?: string
+  ): Promise<
+    BusinessDataResult<{
+      ticketId: string;
+      customerName: string;
+      phone: string;
+      scheduledWindow: string;
+      reason: string;
+      assignedAgent: string;
+      status: string;
+    }>
+  > {
+    const ticketId = 'FLW-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const scheduledWindow = preferredTime || 'Within 2 hours (Urgent SLA)';
+    const metadata = this.generateMetadata(`TICKET-${ticketId}`);
+
+    return {
+      verified: true,
+      data: {
+        ticketId,
+        customerName,
+        phone,
+        scheduledWindow,
+        reason,
+        assignedAgent: 'Arvind Rajan (The Sleep Company frontline)',
+        status: 'CONFIRMED_FOLLOWUP'
+      },
+      metadata
+    };
   }
 
   public getSyncAuditLog() {

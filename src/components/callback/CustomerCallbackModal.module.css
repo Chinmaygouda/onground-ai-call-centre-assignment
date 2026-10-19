@@ -1,0 +1,1086 @@
+/* Customer Callback Modal & Two-Panel Live Workspace */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modalCard {
+  background-color: #0d1b2a;
+  border: 1px solid #1e293b;
+  border-radius: 18px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f8fafc;
+  max-height: 92vh;
+}
+
+/* Size variations depending on step */
+.modalChoice {
+  width: 100%;
+  max-width: 640px;
+}
+
+.modalForm {
+  width: 100%;
+  max-width: 580px;
+}
+
+.modalWorkspace {
+  width: 100%;
+  max-width: 1180px;
+  height: 86vh;
+}
+
+/* Modal Header */
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #1e293b;
+  background-color: #0b1522;
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.headerIconCircle {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+.headerTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.headerSubtitle {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.closeBtn:hover {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+/* Customer Summary Card in Choice / Form */
+.customerBanner {
+  background-color: #112233;
+  border: 1px solid #1e3a5f;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin: 20px 24px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.customerBannerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.customerAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customerNameRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.customerName {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.customerPhone {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.customerContext {
+  font-size: 12.5px;
+  color: #cbd5e1;
+}
+
+.customerBannerRight {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.valueBadge {
+  font-size: 15px;
+  font-weight: 700;
+  color: #34d399;
+}
+
+.valueSubtext {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Choice View Cards */
+.choiceContainer {
+  padding: 8px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.choicePrompt {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0 0 4px;
+}
+
+.optionCard {
+  background-color: #111c2e;
+  border: 1.5px solid #1e293b;
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.optionCard:hover {
+  border-color: #059669;
+  background-color: #13243a;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+.optionCardAi:hover {
+  border-color: #3b82f6;
+  background-color: #13243a;
+}
+
+.optionIconCircle {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background-color: #064e3b;
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.optionIconCircleAi {
+  background-color: #1e3a8a;
+  color: #60a5fa;
+}
+
+.optionContent {
+  flex: 1;
+}
+
+.optionHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.optionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.optionBadge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background-color: #064e3b;
+  color: #34d399;
+  border: 1px solid #059669;
+}
+
+.optionBadgeAi {
+  background-color: #1e3a8a;
+  color: #93c5fd;
+  border-color: #2563eb;
+}
+
+.optionDesc {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.optionArrow {
+  color: #64748b;
+  margin-top: 12px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.optionCard:hover .optionArrow {
+  color: #ffffff;
+  transform: translateX(4px);
+}
+
+/* Form Styles for Option A */
+.formBody {
+  padding: 10px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.formInput,
+.formSelect,
+.formTextarea {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #f8fafc;
+  outline: none;
+  transition: border-color 0.15s ease;
+  font-family: inherit;
+}
+
+.formInput:focus,
+.formSelect:focus,
+.formTextarea:focus {
+  border-color: #059669;
+}
+
+.formSelect {
+  cursor: pointer;
+}
+
+.formTextarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.truthfulNotice {
+  background-color: #102a43;
+  border: 1px solid #204060;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: #93c5fd;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.4;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btnSecondary {
+  background-color: #1e293b;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btnSecondary:hover {
+  background-color: #334155;
+  color: #ffffff;
+}
+
+.btnPrimaryGreen {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+.btnPrimaryGreen:hover {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  transform: translateY(-1px);
+}
+
+/* Confirmation Card */
+.confirmationContainer {
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.successIconCircle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: #064e3b;
+  color: #34d399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.25);
+}
+
+.confirmationTitle {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+}
+
+.confirmationSubtitle {
+  font-size: 14px;
+  color: #94a3b8;
+  max-width: 440px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.confirmationDetailsCard {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+  margin: 8px 0;
+}
+
+.confirmationDetailRow {
+  display: flex;
+  justify-content: space-between;
+}
+
+.confirmationDetailLabel {
+  color: #64748b;
+}
+
+.confirmationDetailValue {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+/* =========================================================
+   TWO-PANEL LIVE CONVERSATIONAL WORKSPACE (OPTION B)
+   ========================================================= */
+.workspaceLayout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* LEFT PANEL: Live Call */
+.leftCallPanel {
+  background-color: #0a1420;
+  border-right: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.callerCard {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.callerTopRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.callerAvatarLarge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+.callerName {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.callerPhoneRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.callerContextBlock {
+  background-color: #0d1724;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Live Session Status Indicator in Left Panel */
+.callStatusBlock {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.statusPillConnecting {
+  background-color: #3b2a0c;
+  color: #fbbf24;
+  border: 1px solid #78350f;
+}
+
+.statusPillConnected {
+  background-color: #064e3b;
+  color: #34d399;
+  border: 1px solid #059669;
+}
+
+.statusPillListening {
+  background-color: #042f2e;
+  color: #2dd4bf;
+  border: 1px solid #0d9488;
+}
+
+.statusPillSpeaking {
+  background-color: #1e1b4b;
+  color: #a78bfa;
+  border: 1px solid #4338ca;
+}
+
+.statusPillError {
+  background-color: #450a0a;
+  color: #f87171;
+  border: 1px solid #991b1b;
+}
+
+.statusPillEnded {
+  background-color: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: pulseAnimation 1.5s infinite;
+}
+
+@keyframes pulseAnimation {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+.sessionTimer {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+
+.sessionStateText {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Audio Waveform / Level Meter */
+.waveformContainer {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.waveBar {
+  width: 4px;
+  background-color: #334155;
+  border-radius: 4px;
+  transition: height 0.08s ease, background-color 0.15s ease;
+  min-height: 6px;
+}
+
+.waveBarActiveGreen {
+  background-color: #10b981;
+}
+
+.waveBarActiveBlue {
+  background-color: #60a5fa;
+}
+
+.waveBarActivePurple {
+  background-color: #a855f7;
+}
+
+/* Left Panel Control Buttons */
+.callControlsSection {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.controlsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.controlBtn {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  color: #cbd5e1;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.controlBtn:hover {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+.controlBtnActive {
+  background-color: #1e3a8a;
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+.controlBtnMuted {
+  background-color: #450a0a;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.btnEndCall {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);
+}
+
+.btnEndCall:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  transform: translateY(-1px);
+}
+
+/* RIGHT PANEL: AI Agent & Live Captions */
+.rightAgentPanel {
+  background-color: #0b1522;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.agentHeader {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #0d1927;
+  flex-shrink: 0;
+}
+
+.agentHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agentHeaderTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modelBadge {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: #1e293b;
+  color: #94a3b8;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+}
+
+.captionsArea {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Conversation Turns & Captions */
+.turnItem {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+  animation: fadeInTurn 0.2s ease-out;
+}
+
+@keyframes fadeInTurn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.turnUser {
+  align-self: flex-start;
+}
+
+.turnAgent {
+  align-self: flex-end;
+}
+
+.turnMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.turnBubble {
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.turnBubbleUser {
+  background-color: #112233;
+  color: #f1f5f9;
+  border: 1px solid #1e3a5f;
+  border-top-left-radius: 4px;
+}
+
+.turnBubbleAgent {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%);
+  color: #ffffff;
+  border: 1px solid #2563eb;
+  border-top-right-radius: 4px;
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
+}
+
+.spokenTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: #93c5fd;
+  margin-top: 6px;
+}
+
+/* Indicators in captions */
+.liveTranscribingCard {
+  align-self: flex-start;
+  background-color: #0c211b;
+  border: 1px dashed #059669;
+  color: #34d399;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: pulseSlow 1.5s infinite;
+}
+
+.liveThinkingCard {
+  align-self: flex-end;
+  background-color: #171d36;
+  border: 1px dashed #3b82f6;
+  color: #93c5fd;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.liveSpeakingCard {
+  align-self: flex-end;
+  background-color: #1f1b3e;
+  border: 1px solid #8b5cf6;
+  color: #c4b5fd;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@keyframes pulseSlow {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+/* Suggested Question Chips */
+.chipsContainer {
+  padding: 8px 20px 12px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  border-top: 1px solid #142233;
+  flex-shrink: 0;
+}
+
+.chipBtn {
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  color: #94a3b8;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chipBtn:hover {
+  background-color: #1e293b;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Bottom Input Row */
+.inputSection {
+  padding: 14px 20px;
+  border-top: 1px solid #1e293b;
+  background-color: #0b1522;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.textInput {
+  flex: 1;
+  background-color: #111c2e;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #ffffff;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.textInput:focus {
+  border-color: #3b82f6;
+}
+
+.micCircleBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: #102a43;
+  border: 1px solid #204060;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.micCircleBtn:hover {
+  background-color: #0284c7;
+  color: #ffffff;
+}
+
+.micCircleBtnListening {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-color: #34d399;
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+  animation: pulseAnimation 1.2s infinite;
+}
+
+.sendBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transform: translateY(-1px);
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile Tabs switcher for workspace on smaller screens */
+.mobileTabSwitcher {
+  display: none;
+  padding: 10px 16px;
+  background-color: #0a1420;
+  border-bottom: 1px solid #1e293b;
+  gap: 8px;
+}
+
+.mobileTabBtn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  background: #111c2e;
+  border: 1px solid #1e293b;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.mobileTabBtnActive {
+  background: #1e3a8a;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Responsive Adaptations */
+@media (max-width: 900px) {
+  .modalWorkspace {
+    width: 100%;
+    height: 94vh;
+    max-height: 94vh;
+  }
+
+  .mobileTabSwitcher {
+    display: flex;
+  }
+
+  .workspaceLayout {
+    grid-template-columns: 1fr;
+    height: calc(100% - 50px);
+  }
+
+  .leftCallPanel {
+    display: none;
+  }
+
+  .rightAgentPanel {
+    display: none;
+  }
+
+  .showMobileLeft {
+    display: flex !important;
+  }
+
+  .showMobileRight {
+    display: flex !important;
+  }
+
+  .customerBanner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .customerBannerRight {
+    text-align: left;
+    margin-top: 4px;
+  }
+}

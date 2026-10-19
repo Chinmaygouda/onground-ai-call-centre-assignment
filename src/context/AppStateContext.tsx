@@ -44,6 +44,19 @@ interface AppStateContextType {
   selectedCallReview: RecentCall | null;
   setSelectedCallReview: (call: RecentCall | null) => void;
   resolveMissedCall: (id: string) => void;
+  callbackCustomer: MissedCall | null;
+  isCallbackModalOpen: boolean;
+  openCallbackModal: (customer: MissedCall) => void;
+  closeCallbackModal: () => void;
+  recordHumanCallback: (payload: {
+    customerId: string;
+    customerName: string;
+    phone: string;
+    preferredTime: string;
+    notes?: string;
+    expectedValue?: number;
+  }) => void;
+  recordCallInteraction: (call: RecentCall) => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -53,10 +66,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isPlanSubmenuOpen, setIsPlanSubmenuOpen] = useState<boolean>(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [agent] = useState<AgentProfile>(mockAgent);
-  const [leads] = useState<Lead[]>(mockLeads);
+  const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>(mockMissedCalls);
-  const [recentCalls] = useState<RecentCall[]>(mockRecentCalls);
-  const [calendarEvents] = useState<CalendarEvent[]>(mockCalendarEvents);
+  const [recentCalls, setRecentCalls] = useState<RecentCall[]>(mockRecentCalls);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(mockCalendarEvents);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
   const [pinnedDecision, setPinnedDecision] = useState<PinnedDecision>(mockPinnedDecision);
   
@@ -66,6 +79,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // SOP Call Review
   const [selectedCallReview, setSelectedCallReview] = useState<RecentCall | null>(null);
+
+  // Customer Callback Modal
+  const [callbackCustomer, setCallbackCustomer] = useState<MissedCall | null>(null);
+  const [isCallbackModalOpen, setIsCallbackModalOpen] = useState<boolean>(false);
+
+  const openCallbackModal = (customer: MissedCall) => {
+    setCallbackCustomer(customer);
+    setIsCallbackModalOpen(true);
+  };
+
+  const closeCallbackModal = () => {
+    setIsCallbackModalOpen(false);
+    setCallbackCustomer(null);
+  };
 
   const openLeadsModal = (index: number = 0) => {
     setActiveLeadIndex(index);
@@ -114,6 +141,83 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
+  const recordHumanCallback = (payload: {
+    customerId: string;
+    customerName: string;
+    phone: string;
+    preferredTime: string;
+    notes?: string;
+    expectedValue?: number;
+  }) => {
+    // 1. Mark missed call as resolved with Callback Requested tag
+    setMissedCalls((prev) =>
+      prev.map((c) =>
+        c.id === payload.customerId
+          ? { ...c, isResolved: true, tag: `Callback Requested (${payload.preferredTime})` }
+          : c
+      )
+    );
+
+    // 2. Add high-priority callback task into leads queue
+    const initials = payload.customerName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'CB';
+
+    const newLeadTask: Lead = {
+      id: `lead-cb-${Date.now()}`,
+      name: payload.customerName,
+      initials,
+      product: payload.notes || 'In-store inquiry follow-up',
+      price: payload.expectedValue || 24990,
+      attractivenessScore: 94,
+      icpScore: 89,
+      intentScore: 95,
+      slaLeft: payload.preferredTime,
+      status: 'IN_PROGRESS',
+      quoteTag: 'Callback Requested',
+      signals: {
+        financing: 'Frontline human callback requested',
+        quotation: 'Product details inquiry',
+        warranty: 'Standard 10-Yr Sleep Co. Coverage'
+      },
+      phone: payload.phone,
+      notes: `Scheduled callback window: ${payload.preferredTime}. Preferred time logged by frontline agent.`
+    };
+
+    setLeads((prev) => [newLeadTask, ...prev]);
+
+    // 3. Add calendar reminder event for the agent
+    const newEvent: CalendarEvent = {
+      id: `evt-cb-${Date.now()}`,
+      dateStr: '2026-10-09',
+      dayNumber: 9,
+      title: `Callback: ${payload.customerName} (${payload.preferredTime})`,
+      time: payload.preferredTime.includes('Morning')
+        ? '11:00 AM'
+        : payload.preferredTime.includes('Evening')
+        ? '5:30 PM'
+        : '2:30 PM',
+      type: 'callback',
+      attendee: payload.customerName
+    };
+    setCalendarEvents((prev) => [...prev, newEvent]);
+
+    addChatMessage(`Logged callback request for ${payload.customerName} (${payload.preferredTime}).`);
+  };
+
+  const recordCallInteraction = (call: RecentCall) => {
+    setRecentCalls((prev) => [call, ...prev]);
+    // Also resolve missed call if phone matches
+    if (call.phone) {
+      setMissedCalls((prev) =>
+        prev.map((c) => (c.phone === call.phone ? { ...c, isResolved: true } : c))
+      );
+    }
+  };
+
   return (
     <AppStateContext.Provider
       value={{
@@ -143,7 +247,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         reschedulePinnedDecision,
         selectedCallReview,
         setSelectedCallReview,
-        resolveMissedCall
+        resolveMissedCall,
+        callbackCustomer,
+        isCallbackModalOpen,
+        openCallbackModal,
+        closeCallbackModal,
+        recordHumanCallback,
+        recordCallInteraction
       }}
     >
       {children}
