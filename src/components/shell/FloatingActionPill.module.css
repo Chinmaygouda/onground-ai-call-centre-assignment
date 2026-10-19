@@ -1,0 +1,64 @@
+.floatingWrapper {
+  position: fixed;
+  bottom: 24px;
+  left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  background-color: #f3f2f7;
+  padding: 6px 8px;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  gap: 8px;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+
+.demoBadge {
+  background-color: #f59e0b;
+  color: #000000;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  letter-spacing: 0.04em;
+  transition: transform var(--transition-fast);
+}
+
+.demoBadge:hover {
+  transform: scale(1.04);
+}
+
+.pillButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  transition: all var(--transition-fast);
+}
+
+.pillButton:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #0f172a;
+}
+
+.pillButton:active {
+  transform: scale(0.97);
+}
+
+.shieldIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: #ecfdf5;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #a7f3d0;
+}

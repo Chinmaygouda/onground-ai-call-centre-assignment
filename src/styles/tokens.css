@@ -1,0 +1,77 @@
+:root {
+  /* Layout Dimensions */
+  --sidebar-width: 224px;
+  --topbar-height: 54px;
+  --header-banner-height: 182px;
+  --content-max-width: 1440px;
+
+  /* Colors - App Shell */
+  --color-sidebar-bg: #11392e;
+  --color-sidebar-active: #20443a;
+  --color-sidebar-hover: #174235;
+  --color-sidebar-text: #ffffff;
+  --color-sidebar-text-muted: #8ca39a;
+  --color-sidebar-badge: #22c55e;
+
+  --color-topbar-bg: #184236;
+  --color-topbar-text: #ffffff;
+  --color-topbar-text-muted: #8ca39a;
+  --color-topbar-border: rgba(255, 255, 255, 0.08);
+
+  /* Colors - Header & Themes */
+  --color-header-navy: #232f79;
+  --color-header-navy-dark: #191c3b;
+  --color-kpi-card: #2f3976;
+  --color-kpi-card-hover: #354185;
+
+  --color-progress-card: #0e251d;
+  --color-progress-pill: #1b4938;
+
+  --color-tasks-border: #78350f;
+  --color-tasks-bg: #fffbeb;
+  --color-tasks-pill: #ef4444;
+
+  --color-pulse-gradient: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  --color-leads-header: #6b21a8;
+
+  /* Surface & Backgrounds */
+  --color-bg-app: #f4f5f8;
+  --color-bg-content: #ffffff;
+  --color-surface-card: #ffffff;
+  --color-surface-subtle: #f8fafc;
+  --color-surface-hover: #f1f5f9;
+
+  /* Border & Dividers */
+  --color-border-subtle: #e2e8f0;
+  --color-border-card: #edf2f7;
+
+  /* Text & Accents */
+  --color-text-main: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #94a3b8;
+  --color-text-white: #ffffff;
+
+  --color-emerald: #10b981;
+  --color-emerald-dark: #059669;
+  --color-amber: #f59e0b;
+  --color-amber-dark: #d97706;
+  --color-red: #ef4444;
+  --color-blue: #3b82f6;
+  --color-indigo: #6366f1;
+  --color-purple: #8b5cf6;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  --shadow-floating-pill: 0 8px 20px rgba(0, 0, 0, 0.15);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}
