@@ -9,15 +9,18 @@ import {
   Calendar,
   MessageSquare,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
+import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './Sidebar.module.css';
 
 export const Sidebar: React.FC = () => {
   const { currentRoute, setCurrentRoute, isPlanSubmenuOpen, setIsPlanSubmenuOpen } = useAppState();
   const { startCall } = useCalling();
+  const { openModal, connectionState } = useGeminiLive();
 
   const isPlanActive = currentRoute.startsWith('plan');
 
@@ -121,6 +124,20 @@ export const Sidebar: React.FC = () => {
         >
           <MessageSquare className={styles.navIcon} />
           <span>Pulse</span>
+        </button>
+
+        {/* Gemini Live Mode 3: Customer Voice Assistant */}
+        <div className={styles.sectionDivider}>AI Voice Assistant</div>
+        <button
+          className={`${styles.navItem} ${styles.geminiNavItem}`}
+          onClick={openModal}
+          title="Open Gemini Live Customer Voice Assistant"
+        >
+          <Sparkles className={styles.navIconGemini} />
+          <span>Customer Voice AI</span>
+          <span className={styles.liveBadge}>
+            {connectionState === 'LISTENING' || connectionState === 'SPEAKING' ? 'LIVE' : 'LIVE API'}
+          </span>
         </button>
       </nav>
     </aside>
