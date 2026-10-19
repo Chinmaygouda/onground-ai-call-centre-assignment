@@ -404,7 +404,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                   setSelectedCallReview(null);
                   startCall({
                     name: selectedCallReview.name,
-                    phone: '+91 98450 12345',
+                    phone: '+91 72041 04491',
                     mode: 'AI_VOICE'
                   });
                 }}

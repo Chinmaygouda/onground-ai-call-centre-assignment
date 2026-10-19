@@ -17,7 +17,7 @@ export const FloatingActionPill: React.FC = () => {
   const handleInAppCall = () => {
     startCall({
       name: 'Mukunda (AI Customer)',
-      phone: '+91 98450 12345',
+      phone: '+91 72041 04491',
       mode: 'AI_VOICE',
       value: 8490,
       product: 'Ortho GRID'
@@ -26,11 +26,11 @@ export const FloatingActionPill: React.FC = () => {
 
   const handlePhoneCall = () => {
     startCall({
-      name: 'Faizan A.',
-      phone: '+91 98452 34567',
+      name: 'Mukunda (Demo Customer)',
+      phone: '+91 72041 04491',
       mode: 'PHONE',
-      value: 24990,
-      product: 'Elevate Adjustable Bed'
+      value: 8490,
+      product: 'Ortho GRID'
     });
   };
 
