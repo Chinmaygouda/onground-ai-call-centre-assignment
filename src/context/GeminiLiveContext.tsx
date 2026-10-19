@@ -153,6 +153,7 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const openModal = () => {
     setIsModalOpen(true);
     checkStatus();
+    checkAvailableModels(false);
   };
 
   const closeModal = () => {
@@ -169,7 +170,7 @@ export const GeminiLiveProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setToolEvents([]);
 
     const client = new GeminiLiveClient({
-      primaryModel: serverModel,
+      primaryModel: activeModel || serverModel,
       fallbackChain: fallbackChain.length > 0 ? fallbackChain : undefined,
       onStateChange: (state) => {
         setConnectionState(state);

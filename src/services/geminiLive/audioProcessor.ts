@@ -11,6 +11,8 @@ export class LiveAudioProcessor {
   private inputMediaStream: MediaStream | null = null;
   private inputSourceNode: MediaStreamAudioSourceNode | null = null;
   private inputProcessorNode: ScriptProcessorNode | null = null;
+  private inputWorkletNode: AudioWorkletNode | null = null;
+  private workletBlobUrl: string | null = null;
   public inputAnalyser: AnalyserNode | null = null;
   private onAudioChunkCallback?: (base64Pcm: string) => void;
 
@@ -50,33 +52,82 @@ export class LiveAudioProcessor {
     this.inputSourceNode = this.inputAudioCtx.createMediaStreamSource(stream);
     this.inputSourceNode.connect(this.inputAnalyser);
 
-    // Buffer size 2048 samples (approx 128ms chunks at 16kHz)
-    const bufferSize = 2048;
-    this.inputProcessorNode = this.inputAudioCtx.createScriptProcessor(bufferSize, 1, 1);
-
-    this.inputProcessorNode.onaudioprocess = (e) => {
-      if (this.isMuted) return;
-
-      const inputChannelData = e.inputBuffer.getChannelData(0);
-      let pcm16Data: Int16Array;
-
-      if (actualSampleRate === 16000) {
-        pcm16Data = this.floatTo16BitPCM(inputChannelData);
-      } else {
-        // Resample from actualSampleRate down to 16000
-        const resampled = this.downsampleBuffer(inputChannelData, actualSampleRate, 16000);
-        pcm16Data = this.floatTo16BitPCM(resampled);
+    // Modern AudioWorkletNode initialization with fallback to ScriptProcessorNode
+    let useWorklet = false;
+    if (this.inputAudioCtx.audioWorklet) {
+      try {
+        const workletCode = `
+class GeminiPcmProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.bufferSize = 2048;
+    this.buffer = new Float32Array(this.bufferSize);
+    this.bufferIndex = 0;
+  }
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
+    const channelData = input[0];
+    for (let i = 0; i < channelData.length; i++) {
+      this.buffer[this.bufferIndex++] = channelData[i];
+      if (this.bufferIndex >= this.bufferSize) {
+        this.port.postMessage(this.buffer.slice(0));
+        this.bufferIndex = 0;
       }
+    }
+    return true;
+  }
+}
+registerProcessor('gemini-pcm-processor', GeminiPcmProcessor);
+`;
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        this.workletBlobUrl = URL.createObjectURL(blob);
+        await this.inputAudioCtx.audioWorklet.addModule(this.workletBlobUrl);
+        this.inputWorkletNode = new AudioWorkletNode(this.inputAudioCtx, 'gemini-pcm-processor');
 
-      const base64Chunk = this.arrayBufferToBase64(pcm16Data.buffer);
-      if (this.onAudioChunkCallback) {
-        this.onAudioChunkCallback(base64Chunk);
+        this.inputWorkletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+          if (this.isMuted) return;
+          this.processRawAudioData(e.data, actualSampleRate);
+        };
+
+        this.inputSourceNode.connect(this.inputWorkletNode);
+        this.inputWorkletNode.connect(this.inputAudioCtx.destination);
+        useWorklet = true;
+        console.log('[LiveAudioProcessor] AudioWorkletNode active for 16kHz PCM streaming');
+      } catch (workletErr) {
+        console.warn('[LiveAudioProcessor] AudioWorkletNode unavailable, falling back to ScriptProcessorNode:', workletErr);
+        useWorklet = false;
       }
-    };
+    }
 
-    this.inputSourceNode.connect(this.inputProcessorNode);
-    // Connect processor to destination to keep audio process event firing in Chrome
-    this.inputProcessorNode.connect(this.inputAudioCtx.destination);
+    if (!useWorklet) {
+      // Buffer size 2048 samples (approx 128ms chunks at 16kHz)
+      const bufferSize = 2048;
+      this.inputProcessorNode = this.inputAudioCtx.createScriptProcessor(bufferSize, 1, 1);
+
+      this.inputProcessorNode.onaudioprocess = (e) => {
+        if (this.isMuted) return;
+        this.processRawAudioData(e.inputBuffer.getChannelData(0), actualSampleRate);
+      };
+
+      this.inputSourceNode.connect(this.inputProcessorNode);
+      this.inputProcessorNode.connect(this.inputAudioCtx.destination);
+    }
+  }
+
+  // Handle incoming audio buffer, resample if necessary, convert to 16-bit PCM, and stream
+  private processRawAudioData(inputChannelData: Float32Array, actualSampleRate: number): void {
+    let pcm16Data: Int16Array;
+    if (actualSampleRate === 16000) {
+      pcm16Data = this.floatTo16BitPCM(inputChannelData);
+    } else {
+      const resampled = this.downsampleBuffer(inputChannelData, actualSampleRate, 16000);
+      pcm16Data = this.floatTo16BitPCM(resampled);
+    }
+    const base64Chunk = this.arrayBufferToBase64(pcm16Data.buffer);
+    if (this.onAudioChunkCallback) {
+      this.onAudioChunkCallback(base64Chunk);
+    }
   }
 
   // Initialize playback AudioContext for 24kHz Gemini speech output
@@ -166,8 +217,19 @@ export class LiveAudioProcessor {
 
   // Clean up all resources
   public dispose(): void {
-    this.stopPlayback();
-
+    if (this.inputWorkletNode) {
+      try {
+        this.inputWorkletNode.port.close();
+        this.inputWorkletNode.disconnect();
+      } catch {}
+      this.inputWorkletNode = null;
+    }
+    if (this.workletBlobUrl) {
+      try {
+        URL.revokeObjectURL(this.workletBlobUrl);
+      } catch {}
+      this.workletBlobUrl = null;
+    }
     if (this.inputProcessorNode) {
       this.inputProcessorNode.disconnect();
       this.inputProcessorNode = null;
