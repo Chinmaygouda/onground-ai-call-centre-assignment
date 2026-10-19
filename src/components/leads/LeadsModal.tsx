@@ -40,7 +40,7 @@ export const LeadsModal: React.FC = () => {
     startCall({
       name: currentLead.name,
       phone: currentLead.phone,
-      mode: 'AI_VOICE',
+      mode: 'WEBRTC_PEER',
       value: currentLead.price,
       product: currentLead.product
     });
