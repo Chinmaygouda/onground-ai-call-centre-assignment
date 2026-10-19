@@ -215,6 +215,10 @@ registerProcessor('gemini-pcm-processor', GeminiPcmProcessor);
     }
   }
 
+  public getIsMuted(): boolean {
+    return this.isMuted;
+  }
+
   // Clean up all resources
   public dispose(): void {
     if (this.inputWorkletNode) {

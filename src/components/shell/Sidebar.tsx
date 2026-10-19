@@ -10,7 +10,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronRight,
-  Sparkles
+  Headphones
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
@@ -126,15 +126,16 @@ export const Sidebar: React.FC = () => {
           <span>Pulse</span>
         </button>
 
-        {/* Gemini Live Mode 3: Customer Voice Assistant */}
-        <div className={styles.sectionDivider}>AI Voice Assistant</div>
+        {/* Gemini Live Mode 3: Voice Assistant */}
+        <div className={styles.sectionDivider}>Voice Assistant</div>
         <button
           className={`${styles.navItem} ${styles.geminiNavItem}`}
           onClick={openModal}
-          title="Open Gemini Live Customer Voice Assistant"
+          title="Voice Assistant (Gemini Live multimodal voice AI)"
+          aria-label="Voice Assistant"
         >
-          <Sparkles className={styles.navIconGemini} />
-          <span>Customer Voice AI</span>
+          <Headphones className={styles.navIconGemini} />
+          <span>Voice Assistant</span>
           <span className={styles.liveBadge}>
             {connectionState === 'LISTENING' || connectionState === 'SPEAKING' ? 'LIVE' : 'LIVE API'}
           </span>
