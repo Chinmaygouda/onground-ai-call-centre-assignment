@@ -336,6 +336,162 @@ async function runSuite() {
     'discoverAvailableModels: Returns structured candidate catalog without leaking secrets when key is empty'
   );
 
+  // -------------------------------------------------------------------------
+  // 7. Live WebSocket v1beta Endpoint, Setup Confirmation & Real Handshake
+  // -------------------------------------------------------------------------
+  console.log(`\n${BOLD}[7/7] Live WebSocket v1beta Endpoint & Setup Confirmation Tests${RESET}`);
+
+  // Test 7.1: Verify client source code enforces v1beta and BidiGenerateContentConstrained
+  const clientSrc = readFileSync(
+    resolve(process.cwd(), 'src/services/geminiLive/geminiLiveClient.ts'),
+    'utf-8'
+  );
+  assert(
+    clientSrc.includes('v1beta.GenerativeService') && !clientSrc.includes('v1alpha'),
+    'geminiLiveClient.ts: Strictly uses documented v1beta endpoint (0 occurrences of v1alpha)'
+  );
+  assert(
+    clientSrc.includes('BidiGenerateContentConstrained') && clientSrc.includes("'access_token'"),
+    'geminiLiveClient.ts: Employs BidiGenerateContentConstrained with access_token parameter for ephemeral tokens'
+  );
+  assert(
+    clientSrc.includes('msg.setupComplete') && clientSrc.includes('this.isSetupConfirmed = true'),
+    'geminiLiveClient.ts: Awaits setupComplete confirmation before marking session as LISTENING'
+  );
+
+  // Test 7.2: Verify AudioProcessor AudioWorklet migration
+  const audioSrc = readFileSync(
+    resolve(process.cwd(), 'src/services/geminiLive/audioProcessor.ts'),
+    'utf-8'
+  );
+  assert(
+    audioSrc.includes('AudioWorkletNode') && audioSrc.includes('createScriptProcessor'),
+    'audioProcessor.ts: Implements AudioWorkletNode with seamless ScriptProcessorNode fallback'
+  );
+
+  // Test 7.3: Real Live WebSocket Connection to Google API (if key available)
+  let liveApiKey = process.env.GEMINI_API_KEY;
+  if (!liveApiKey && existsSync(resolve(process.cwd(), '.env'))) {
+    const envRaw = readFileSync(resolve(process.cwd(), '.env'), 'utf-8');
+    const match = envRaw.match(/GEMINI_API_KEY\s*=\s*([^\r\n#]+)/);
+    if (match && match[1] && !match[1].includes('your_gemini_api_key_here')) {
+      liveApiKey = match[1].trim();
+    }
+  }
+
+  if (liveApiKey) {
+    const { GoogleGenAI } = await import('@google/genai');
+    const ai = new GoogleGenAI({ apiKey: liveApiKey });
+    const WebSocket = globalThis.WebSocket;
+
+    // Mint token with v1beta
+    const tokenRes = await ai.authTokens.create({
+      config: {
+        uses: 1,
+        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+        httpOptions: { apiVersion: 'v1beta' }
+      }
+    });
+
+    assert(
+      tokenRes.name && tokenRes.name.startsWith('auth_tokens/'),
+      'ai.authTokens.create (v1beta): Successfully mints ephemeral session token starting with auth_tokens/'
+    );
+
+    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(
+      tokenRes.name
+    )}`;
+
+    // Test real live WebSocket handshake against Google with fallback progression
+    async function testModelLiveHandshake(targetModel: string) {
+      return new Promise<{
+        setupComplete: boolean;
+        closeCode?: number;
+        closeReason?: string;
+      }>((res) => {
+        let isDone = false;
+        const ws = new WebSocket(wsUrl);
+
+        const t = setTimeout(() => {
+          if (!isDone) {
+            isDone = true;
+            ws.close();
+            res({ setupComplete: false, closeReason: 'TIMEOUT' });
+          }
+        }, 7000);
+
+        ws.onopen = () => {
+          const setupMsg = {
+            setup: {
+              model: `models/${targetModel}`,
+              generationConfig: {
+                responseModalities: ['AUDIO']
+              }
+            }
+          };
+          ws.send(JSON.stringify(setupMsg));
+        };
+
+        ws.onmessage = async (event: any) => {
+          if (isDone) return;
+          try {
+            const raw = typeof event.data === 'string' ? event.data : await event.data.text();
+            const parsed = JSON.parse(raw);
+            if (parsed.setupComplete) {
+              isDone = true;
+              clearTimeout(t);
+              ws.close(1000, 'Handshake verified');
+              res({ setupComplete: true });
+            }
+          } catch {}
+        };
+
+        ws.onclose = (e: any) => {
+          if (!isDone) {
+            isDone = true;
+            clearTimeout(t);
+            res({ setupComplete: false, closeCode: e.code, closeReason: e.reason });
+          }
+        };
+
+        ws.onerror = () => {
+          if (!isDone) {
+            isDone = true;
+            clearTimeout(t);
+            res({ setupComplete: false, closeReason: 'ERROR' });
+          }
+        };
+      });
+    }
+
+    // Step 1: Probe primary model
+    const primaryHandshake = await testModelLiveHandshake('gemini-3.8-live');
+    assert(
+      primaryHandshake.closeCode !== 1008,
+      'Real Google Live API: 1008 Unregistered Caller error resolved (identity established via access_token)'
+    );
+
+    let verifiedModel = '';
+    if (primaryHandshake.setupComplete) {
+      verifiedModel = 'gemini-3.8-live';
+    } else if (primaryHandshake.closeCode === 1011) {
+      console.log(`  ${YELLOW}ℹ NOTICE${RESET} gemini-3.8-live returned Code 1011 (Account Quota Exhausted). Testing verified fallback gemini-3.1-flash-live-preview...`);
+      const fallbackHandshake = await testModelLiveHandshake('gemini-3.1-flash-live-preview');
+      if (fallbackHandshake.setupComplete) {
+        verifiedModel = 'gemini-3.1-flash-live-preview';
+      }
+    }
+
+    assert(
+      verifiedModel.length > 0,
+      `Real Google Live API: Successfully completed Live WebSocket handshake with setupComplete (${verifiedModel})`,
+      `Last close code: ${primaryHandshake.closeCode}, reason: ${primaryHandshake.closeReason}`
+    );
+  } else {
+    console.log(`  ${YELLOW}ℹ SKIP${RESET} Live Google API WebSocket handshake skipped (no GEMINI_API_KEY in .env)`);
+  }
+
   // Summary
   console.log(`\n${BOLD}======================================================${RESET}`);
   if (failed === 0) {

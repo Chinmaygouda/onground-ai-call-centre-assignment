@@ -50,6 +50,8 @@ export class GeminiLiveClient {
   private animationFrameId: number | null = null;
   private fallbackManager: ModelFallbackManager;
   private isIntentionalDisconnect = false;
+  private isSetupConfirmed = false;
+  private setupTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: GeminiLiveClientOptions) {
     this.options = options;
@@ -73,6 +75,10 @@ export class GeminiLiveClient {
 
   public getAudioProcessor(): LiveAudioProcessor {
     return this.audioProcessor;
+  }
+
+  public isSessionSetupConfirmed(): boolean {
+    return this.isSetupConfirmed;
   }
 
   private setState(newState: LiveConnectionState) {
@@ -137,7 +143,7 @@ export class GeminiLiveClient {
       const isConstrained = token.startsWith('auth_tokens/');
       const method = isConstrained ? 'BidiGenerateContentConstrained' : 'BidiGenerateContent';
       const paramName = isConstrained ? 'access_token' : 'key';
-      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.${method}?${paramName}=${encodeURIComponent(
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.${method}?${paramName}=${encodeURIComponent(
         token
       )}`;
 
@@ -145,7 +151,7 @@ export class GeminiLiveClient {
       this.ws = ws;
 
       ws.onopen = () => {
-        console.log(`[GeminiLive:Client] WebSocket established for model: ${model}. Sending setup message...`);
+        console.log(`[GeminiLive:Client] WebSocket open for model: ${model}. Sending setup message and awaiting setupComplete...`);
         const normalizedModel = model.startsWith('models/') ? model : `models/${model}`;
 
         const setupMessage = {
@@ -173,9 +179,14 @@ export class GeminiLiveClient {
         };
 
         ws.send(JSON.stringify(setupMessage));
-        this.setState('LISTENING');
-        this.options.onActiveModelChanged?.(model);
-        this.startAudioVisualizerLoop();
+
+        // Start bounded setup timer (8s)
+        this.setupTimeoutTimer = setTimeout(() => {
+          if (!this.isSetupConfirmed && this.ws === ws) {
+            console.warn(`[GeminiLive:Client] Setup handshake timed out for model: ${model}. Triggering fallback.`);
+            ws.close(1002, 'Setup handshake timed out after 8000ms');
+          }
+        }, 8000);
       };
 
       ws.onmessage = async (event) => {
@@ -202,7 +213,12 @@ export class GeminiLiveClient {
       };
 
       ws.onclose = (e) => {
-        console.log(`[GeminiLive:Client] WebSocket closed (Code: ${e.code}, Reason: ${e.reason || 'Normal'})`);
+        if (this.setupTimeoutTimer) {
+          clearTimeout(this.setupTimeoutTimer);
+          this.setupTimeoutTimer = null;
+        }
+
+        console.log(`[GeminiLive:Client] WebSocket closed (Code: ${e.code}, Reason: ${e.reason || 'Normal'}, SetupConfirmed: ${this.isSetupConfirmed})`);
         this.stopAudioVisualizerLoop();
 
         if (this.isIntentionalDisconnect) {
@@ -299,6 +315,20 @@ export class GeminiLiveClient {
 
   // Handle incoming server message from Gemini Live API
   private async handleServerMessage(msg: any): Promise<void> {
+    // 0. Setup Complete confirmation from Google Live API
+    if (msg.setupComplete) {
+      console.log(`[GeminiLive:Client] Setup confirmed by Google Live API for model: ${this.fallbackManager.getActiveModel()}`);
+      if (this.setupTimeoutTimer) {
+        clearTimeout(this.setupTimeoutTimer);
+        this.setupTimeoutTimer = null;
+      }
+      this.isSetupConfirmed = true;
+      this.setState('LISTENING');
+      this.options.onActiveModelChanged?.(this.fallbackManager.getActiveModel());
+      this.startAudioVisualizerLoop();
+      return;
+    }
+
     // 1. Tool Call from Model
     if (msg.toolCall && msg.toolCall.functionCalls) {
       console.log('[GeminiLive:Client] Received Tool Call:', msg.toolCall);
@@ -414,6 +444,11 @@ export class GeminiLiveClient {
   // Disconnect session and release all audio/network resources
   public disconnect(): void {
     this.isIntentionalDisconnect = true;
+    if (this.setupTimeoutTimer) {
+      clearTimeout(this.setupTimeoutTimer);
+      this.setupTimeoutTimer = null;
+    }
+    this.isSetupConfirmed = false;
     this.stopAudioVisualizerLoop();
     this.audioProcessor.dispose();
 

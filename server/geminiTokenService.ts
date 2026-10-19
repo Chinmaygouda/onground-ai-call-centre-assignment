@@ -73,7 +73,7 @@ export async function handleGeminiTokenRequest(
         uses: 1,
         expireTime,
         newSessionExpireTime,
-        httpOptions: { apiVersion: 'v1alpha' }
+        httpOptions: { apiVersion: 'v1beta' }
       }
     });
 
