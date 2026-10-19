@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Calendar as CalendarIcon, Star, Sparkles } from 'lucide-react';
+import { Bell, Calendar as CalendarIcon, Star, Headphones } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './Topbar.module.css';
@@ -11,6 +11,8 @@ export const Topbar: React.FC = () => {
   const handleDateClick = () => {
     setCurrentRoute('calendar');
   };
+
+  const isLive = connectionState === 'LISTENING' || connectionState === 'SPEAKING';
 
   return (
     <header className={styles.topbar}>
@@ -24,16 +26,13 @@ export const Topbar: React.FC = () => {
       <div className={styles.userSection}>
         {/* Customer Voice Assistant (Gemini Live) */}
         <button
-          className={styles.geminiVoiceBtn}
+          className={`${styles.geminiVoiceBtn} ${isLive ? styles.geminiVoiceBtnActive : ''}`}
           onClick={openModal}
-          title="Launch Customer Voice Assistant (Gemini Live Multimodal Voice AI)"
+          title="Voice Assistant (Gemini Live multimodal voice AI)"
+          aria-label="Voice Assistant"
         >
-          <Sparkles size={14} className={styles.geminiSparkleIcon} />
-          <span>
-            {connectionState === 'LISTENING' || connectionState === 'SPEAKING'
-              ? 'Voice Assistant (Live)'
-              : 'Customer Voice Assistant'}
-          </span>
+          <Headphones size={14} className={styles.geminiSparkleIcon} />
+          <span>{isLive ? 'Voice Assistant (Live)' : 'Voice Assistant'}</span>
         </button>
 
         {/* On Queue Indicator */}

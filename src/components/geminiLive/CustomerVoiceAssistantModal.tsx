@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic,
   MicOff,
   PhoneOff,
-  Sparkles,
+  Headphones,
   X,
   AlertTriangle,
   RefreshCw,
@@ -14,8 +14,9 @@ import {
   ChevronDown,
   ChevronUp,
   Cpu,
-  Info,
-  Zap
+  Activity,
+  Sparkles,
+  MessageSquare
 } from 'lucide-react';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './CustomerVoiceAssistantModal.module.css';
@@ -25,6 +26,11 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
     isModalOpen,
     closeModal,
     connectionState,
+    voiceActivityState,
+    audioTelemetry,
+    turns,
+    formattedDuration,
+    clearTranscript,
     isConfigured,
     serverModel,
     activeModel,
@@ -36,10 +42,7 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
     fallbackHistory,
     simulateFallback,
     errorMessage,
-    userTranscript,
-    aiTranscript,
     toolEvents,
-    audioLevel,
     isAiSpeaking,
     isMuted,
     startSession,
@@ -52,10 +55,20 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
     catalogVersion
   } = useGeminiLive();
 
+  const [isToolsDrawerOpen, setIsToolsDrawerOpen] = useState(false);
   const [isSyncDrawerOpen, setIsSyncDrawerOpen] = useState(false);
-  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(true);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<Record<string, number>>({});
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll transcript container on new messages or updates
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [turns, isAiSpeaking]);
 
   if (!isModalOpen) return null;
 
@@ -66,24 +79,121 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
     connectionState === 'FETCHING_TOKEN' ||
     connectionState === 'CONNECTING';
 
-  // Render 28 dynamic waveform bars based on live audio level
-  const renderWaveform = () => {
+  // Helper for 4 connection status pill states
+  const renderConnectionPill = () => {
+    if (errorMessage || connectionState === 'ERROR') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusError}`}>
+          <AlertTriangle size={12} />
+          <span>Connection Error</span>
+        </span>
+      );
+    }
+    if (isBusy || connectionState === 'RECONNECTING_FALLBACK') {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnecting}`}>
+          <RefreshCw size={12} className={styles.spinIcon} />
+          <span>Connecting</span>
+        </span>
+      );
+    }
+    if (isConnected) {
+      return (
+        <span className={`${styles.statusPill} ${styles.statusConnected}`}>
+          <CheckCircle2 size={12} />
+          <span>Connected</span>
+        </span>
+      );
+    }
+    return (
+      <span className={`${styles.statusPill} ${styles.statusDisconnected}`}>
+        <PhoneOff size={12} />
+        <span>Disconnected</span>
+      </span>
+    );
+  };
+
+  // Helper for 7 voice activity states (Requirement 4 - HIGHEST PRIORITY)
+  const renderVoiceActivityStatus = () => {
+    switch (voiceActivityState) {
+      case 'MIC_OFF':
+        return {
+          badgeClass: styles.stateMicOff,
+          icon: <MicOff size={15} />,
+          label: isMuted ? 'Microphone Muted' : 'Microphone Off',
+          hint: isMuted
+            ? 'Microphone is currently muted. Click "Unmute Microphone" below to speak.'
+            : 'Microphone is inactive. Click "Start Conversation" below to connect with Gemini.'
+        };
+      case 'LISTENING':
+        return {
+          badgeClass: styles.stateListening,
+          icon: <Mic size={15} />,
+          label: 'Listening',
+          hint: 'Microphone is active and ready for your voice. Speak naturally.'
+        };
+      case 'VOICE_DETECTED':
+        return {
+          badgeClass: styles.stateVoiceDetected,
+          icon: <Activity size={15} />,
+          label: 'Voice Detected',
+          hint: 'Microphone audio detected. Encoding 16kHz PCM audio stream.'
+        };
+      case 'SENDING_AUDIO':
+        return {
+          badgeClass: styles.stateSendingAudio,
+          icon: <Radio size={15} />,
+          label: 'Sending Audio',
+          hint: 'Audio frames actively transmitting through live Gemini Live WebSocket pipeline.'
+        };
+      case 'AI_THINKING':
+        return {
+          badgeClass: styles.stateAiThinking,
+          icon: <Sparkles size={15} className={styles.spinIcon} />,
+          label: 'AI Thinking',
+          hint: 'Gemini is processing your question and querying business records...'
+        };
+      case 'AI_SPEAKING':
+        return {
+          badgeClass: styles.stateAiSpeaking,
+          icon: <Volume2 size={15} />,
+          label: 'AI Speaking',
+          hint: 'Gemini is speaking response aloud. You can speak to interrupt anytime.'
+        };
+      case 'ERROR':
+        return {
+          badgeClass: styles.stateError,
+          icon: <AlertTriangle size={15} />,
+          label: 'Connection Error',
+          hint: errorMessage || 'Audio pipeline or connection failed. Please retry.'
+        };
+    }
+  };
+
+  const currentVoiceStatus = renderVoiceActivityStatus();
+
+  // 24 Dynamic waveform sound bars
+  const renderSoundWave = () => {
+    const isAi = isAiSpeaking || voiceActivityState === 'AI_SPEAKING';
+    const effectiveLevel = isAi ? audioTelemetry.outputLevel : audioTelemetry.inputLevel;
+
     return Array.from({ length: 24 }).map((_, index) => {
       let height = 4;
       if (isConnected) {
-        // Vary height with audioLevel and sine wave distribution
-        const offset = Math.sin(index / 3) * 0.3;
-        const normalized = Math.max(0.1, audioLevel + offset);
-        height = Math.max(4, Math.min(32, normalized * 36));
+        const offset = Math.sin((index / 24) * Math.PI) * 0.4;
+        const normalized = Math.max(0.08, effectiveLevel + offset);
+        height = Math.max(4, Math.min(28, normalized * 32));
       }
       return (
         <div
           key={index}
           className={`${styles.waveBar} ${
-            isAiSpeaking
-              ? styles.waveBarSpeaking
+            isAi
+              ? styles.waveBarAi
+              : voiceActivityState === 'VOICE_DETECTED' || voiceActivityState === 'SENDING_AUDIO'
+              ? styles.waveBarMicActive
               : isConnected
-              ? styles.waveBarListening
+              ? styles.waveBarMic
               : ''
           }`}
           style={{ height: `${height}px` }}
@@ -91,6 +201,14 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
       );
     });
   };
+
+  // Level meter percentage
+  const currentLevelPct = Math.min(
+    100,
+    Math.round(
+      (isAiSpeaking ? audioTelemetry.outputLevel : audioTelemetry.inputLevel) * 100 * 2.5
+    )
+  );
 
   const handlePriceUpdate = (productId: string, size: string) => {
     const newPrice = editingPrice[`${productId}-${size}`];
@@ -104,22 +222,22 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
   return (
     <div className={styles.modalOverlay} onClick={closeModal}>
       <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-        {/* Modal Header */}
+        {/* Header */}
         <div className={styles.modalHeader}>
           <div className={styles.headerTitleGroup}>
             <div className={styles.headerIconWrapper}>
-              <Sparkles size={20} color="#ffffff" />
+              <Headphones size={22} color="#ffffff" />
             </div>
             <div>
               <h2 className={styles.headerTitle}>Customer Voice Assistant</h2>
-              <div className={styles.headerSubtitle}>
-                <span>Gemini Live API</span>
-                <span className={styles.badgeLive}>
-                  <Radio size={10} /> Live WebSocket ({activeModel || serverModel})
+              <div className={styles.headerMetaRow}>
+                {renderConnectionPill()}
+                <span className={styles.badgeModel} title="Active Gemini Live Voice Model">
+                  Model: {activeModel || serverModel}
                 </span>
-                {activeModel && serverModel && activeModel !== serverModel && (
-                  <span className={styles.badgeSecondary} style={{ fontSize: '10px' }}>
-                    Fallback Model Active
+                {isConnected && (
+                  <span className={styles.badgeTimer} title="Active Session Duration">
+                    ⏱ {formattedDuration}
                   </span>
                 )}
                 <span>· Catalogue v{catalogVersion}</span>
@@ -130,7 +248,8 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
           <button
             className={styles.closeBtn}
             onClick={closeModal}
-            title="Close Assistant"
+            title="Close Voice Assistant"
+            aria-label="Close Voice Assistant"
           >
             <X size={20} />
           </button>
@@ -138,203 +257,250 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
 
         {/* Modal Body */}
         <div className={styles.modalBody}>
-          {/* Missing API Key Warning Banner */}
+          {/* Missing Configuration Notice */}
           {!isConfigured && (
             <div className={styles.setupAlert}>
               <AlertTriangle size={20} color="#fbbf24" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>
-                  Server Configuration Required (Gemini Live Mode)
+                  Server Configuration Required
                 </div>
                 <div>
-                  <code className={styles.setupAlertCode}>GEMINI_API_KEY</code> is not set in your local <code className={styles.setupAlertCode}>.env</code>.
+                  <code className={styles.setupAlertCode}>GEMINI_API_KEY</code> is not configured in your <code className={styles.setupAlertCode}>.env</code>.
                   To experience real-time two-way audio with Gemini Live, obtain an API key from Google AI Studio, add it to <code className={styles.setupAlertCode}>.env</code>, and restart.
                 </div>
-                <div style={{ marginTop: 4, color: '#fcd34d', fontSize: '11.5px' }}>
-                  ✓ Security Standard: Keys are loaded server-side only. Ephemeral session tokens are minted for the client.
-                </div>
               </div>
             </div>
           )}
 
-          {/* Model Fallback Transition Alert Banner */}
+          {/* Fallback Notice */}
           {(connectionState === 'RECONNECTING_FALLBACK' || modelSwitchEvent) && (
-            <div className={styles.fallbackAlert}>
-              <RefreshCw size={18} className={styles.spinIcon} />
+            <div className={styles.setupAlert} style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#bae6fd' }}>
+              <RefreshCw size={18} className={styles.spinIcon} style={{ flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '12.5px' }}>
-                  Automatic Voice Model Fallback Active
-                </div>
+                <div style={{ fontWeight: 700 }}>Automatic Voice Model Fallback Active</div>
                 <div style={{ fontSize: '11.5px', marginTop: 2 }}>
                   {modelSwitchEvent
-                    ? `Switched model: ${modelSwitchEvent.fromModel} → ${modelSwitchEvent.toModel} (${modelSwitchEvent.reason}). Audio pipeline preserved.`
-                    : `Switching to next verified live voice model in chain (${fallbackChain.join(' → ')})...`}
+                    ? `Switched voice model: ${modelSwitchEvent.fromModel} → ${modelSwitchEvent.toModel} (${modelSwitchEvent.reason}). Audio pipeline preserved.`
+                    : `Transitioning to fallback voice model in chain (${fallbackChain.join(' → ')})...`}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Error Message */}
+          {/* Plain English Error Message */}
           {errorMessage && (
             <div className={styles.setupAlert} style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#fca5a5' }}>
               <AlertTriangle size={20} color="#f87171" style={{ flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700 }}>Connection Notice</div>
+                <div style={{ fontWeight: 700 }}>Microphone / Connection Notice</div>
                 <div>{errorMessage}</div>
               </div>
               <button
                 style={{ background: 'transparent', border: 'none', color: '#fca5a5', cursor: 'pointer' }}
                 onClick={clearError}
+                aria-label="Dismiss notice"
               >
                 <X size={16} />
               </button>
             </div>
           )}
 
-          {/* Live Audio Visualizer Stage */}
-          <div className={styles.stageCard}>
-            <div
-              className={`${styles.statusIndicator} ${
-                connectionState === 'IDLE'
-                  ? styles.statusIdle
-                  : isBusy || connectionState === 'RECONNECTING_FALLBACK'
-                  ? styles.statusConnecting
-                  : connectionState === 'LISTENING'
-                  ? styles.statusListening
-                  : connectionState === 'SPEAKING'
-                  ? styles.statusSpeaking
-                  : styles.statusError
-              }`}
-            >
-              <span>
-                {connectionState === 'IDLE' && 'Ready to Connect'}
-                {connectionState === 'REQUESTING_MIC' && 'Requesting Microphone Access...'}
-                {connectionState === 'FETCHING_TOKEN' && `Authenticating Session Token (${activeModel})...`}
-                {connectionState === 'CONNECTING' && `Connecting to Gemini Live WebSocket (${activeModel})...`}
-                {connectionState === 'RECONNECTING_FALLBACK' && `Reconnecting with Fallback Model (${activeModel})...`}
-                {connectionState === 'LISTENING' && `Listening · Speak Naturally (${activeModel})`}
-                {connectionState === 'SPEAKING' && `AI Speaking · Gemini Voice Active (${activeModel})`}
-                {connectionState === 'ERROR' && 'Connection Interrupted'}
-                {connectionState === 'DISCONNECTED' && 'Session Concluded'}
-              </span>
+          {/* PROMINENT LIVE VOICE ACTIVITY & TRANSMISSION STATUS BAR (Requirement 4) */}
+          <div className={styles.voiceStatusCard}>
+            <div className={styles.voiceStatusHeader}>
+              <div className={`${styles.voiceStateBadge} ${currentVoiceStatus.badgeClass}`}>
+                {currentVoiceStatus.icon}
+                <span>{currentVoiceStatus.label}</span>
+              </div>
+
+              {/* Verified Audio Telemetry Metric */}
+              <div
+                className={styles.telemetryBadge}
+                title="Verified PCM frames and volume transferred through WebSocket"
+              >
+                PCM Uplink: {audioTelemetry.chunksSent} frames ({((audioTelemetry.bytesSent || 0) / 1024).toFixed(1)} KB)
+              </div>
             </div>
 
-            <div
-              className={`${styles.orbVisualizer} ${
-                isAiSpeaking
-                  ? styles.orbSpeaking
-                  : isConnected
-                  ? styles.orbListening
-                  : ''
-              }`}
-            >
-              {isAiSpeaking ? (
-                <Volume2 size={40} color="#ffffff" />
-              ) : isConnected ? (
-                <Mic size={40} color="#ffffff" />
-              ) : (
-                <Sparkles size={40} color="#ffffff" />
+            <p className={styles.voiceHintText}>{currentVoiceStatus.hint}</p>
+
+            {/* Level Meter and Waveform Sound Bars */}
+            <div className={styles.meterAndWaveRow}>
+              <div className={styles.audioLevelMeterWrapper}>
+                <div className={styles.levelMeterLabels}>
+                  <span>{isAiSpeaking ? 'AI Output Energy' : 'Microphone Input Energy'}</span>
+                  <span>{currentLevelPct}%</span>
+                </div>
+                <div className={styles.audioLevelMeterTrack}>
+                  <div
+                    className={`${styles.audioLevelMeterFill} ${
+                      isAiSpeaking ? styles.levelFillAi : styles.levelFillMic
+                    }`}
+                    style={{ width: `${currentLevelPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Sound Bars */}
+              <div className={styles.soundWaveContainer} title="Real-time audio frequency visualizer">
+                {renderSoundWave()}
+              </div>
+            </div>
+          </div>
+
+          {/* CONVERSATION TRANSCRIPT AREA (Requirements 3 & 5) */}
+          <div className={styles.transcriptCard}>
+            <div className={styles.transcriptHeader}>
+              <div className={styles.transcriptTitle}>
+                <MessageSquare size={14} color="#38bdf8" />
+                <span>Conversation Transcript</span>
+                {turns.length > 0 && <span>({turns.length} turns)</span>}
+              </div>
+              {turns.length > 0 && (
+                <button
+                  className={styles.clearTranscriptBtn}
+                  onClick={clearTranscript}
+                  title="Clear transcript history"
+                >
+                  Clear Transcript
+                </button>
               )}
             </div>
 
-            <div className={styles.waveformDisplay}>{renderWaveform()}</div>
+            <div className={styles.transcriptList}>
+              {turns.length === 0 ? (
+                <div className={styles.emptyTranscriptState}>
+                  <div className={styles.emptyStateIcon}>
+                    <Mic size={24} />
+                  </div>
+                  <div className={styles.emptyStateTitle}>Speak normally to converse with Gemini</div>
+                  <p style={{ margin: 0, fontSize: '12px', maxWidth: '420px' }}>
+                    Your speech is transcribed live as you speak. Gemini Live answers aloud with verified product specifications, prices, offers, and warranty terms.
+                  </p>
 
-            <p className={styles.stageHelpText}>
-              {isConnected
-                ? isAiSpeaking
-                  ? 'Gemini is responding aloud. You can speak to interrupt anytime.'
-                  : isMuted
-                  ? 'Microphone is muted. Unmute to speak.'
-                  : 'Speak into your microphone. Inquire about prices, offers, warranty, EMI, or trial terms.'
-                : 'Click "Start Conversation" below to connect your microphone directly to Gemini Live.'}
-            </p>
-          </div>
-
-          {/* Real-time Transcription Stream */}
-          <div className={styles.transcriptCard}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
-              Dialogue Transcription
-            </div>
-            {userTranscript && (
-              <div className={styles.transcriptRow}>
-                <span className={styles.userLabel}>Customer:</span>
-                <span>&ldquo;{userTranscript}&rdquo;</span>
-              </div>
-            )}
-            {aiTranscript && (
-              <div className={styles.transcriptRow}>
-                <span className={styles.aiLabel}>Assistant:</span>
-                <span>&ldquo;{aiTranscript}&rdquo;</span>
-              </div>
-            )}
-            {!userTranscript && !aiTranscript && (
-              <div className={styles.emptyTranscript}>
-                Live conversation transcripts will appear here as speech is detected.
-              </div>
-            )}
-          </div>
-
-          {/* Verified Tool Invocations Activity Feed */}
-          <div className={styles.toolFeedSection}>
-            <div className={styles.toolFeedHeader}>
-              <div className={styles.toolFeedTitle}>
-                <Database size={14} color="#38bdf8" />
-                <span>Verified Business Data Tool Invocations</span>
-              </div>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                {toolEvents.length} call(s) executed
-              </span>
-            </div>
-
-            {toolEvents.length === 0 ? (
-              <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '6px 0' }}>
-                No tools called yet. Ask for a mattress price, active offer, EMI plan, or warranty to observe live tool execution.
-              </div>
-            ) : (
-              <div className={styles.toolList}>
-                {toolEvents.map((evt) => (
-                  <div
-                    key={evt.id}
-                    className={`${styles.toolItem} ${
-                      evt.verified ? styles.toolItemVerified : styles.toolItemUnverified
-                    }`}
-                  >
-                    <div>
-                      <span className={styles.toolNameBadge}>{evt.toolName}()</span>
-                      <span style={{ color: '#cbd5e1' }}>{evt.summary}</span>
+                  <div className={styles.promptChipsGrid}>
+                    <div className={styles.promptChip}>
+                      &ldquo;What are the current offers on Ortho GRID mattresses?&rdquo;
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '11px', color: '#94a3b8' }}>
-                      {evt.verified ? (
-                        <CheckCircle2 size={13} color="#10b981" />
-                      ) : (
-                        <AlertTriangle size={13} color="#ef4444" />
-                      )}
-                      <span>{evt.timestamp}</span>
+                    <div className={styles.promptChip}>
+                      &ldquo;What is the Queen size price for SmartGRID Ortho?&rdquo;
+                    </div>
+                    <div className={styles.promptChip}>
+                      &ldquo;Can you explain the 100-night trial and warranty terms?&rdquo;
+                    </div>
+                    <div className={styles.promptChip}>
+                      &ldquo;What No-Cost EMI options are available?&rdquo;
                     </div>
                   </div>
-                ))}
+                </div>
+              ) : (
+                turns.map((turn) => {
+                  const isUser = turn.speaker === 'user';
+                  return (
+                    <div
+                      key={turn.id}
+                      className={`${styles.turnRow} ${isUser ? styles.turnUser : styles.turnAssistant}`}
+                    >
+                      <div className={styles.turnSpeakerMeta}>
+                        <span className={isUser ? styles.userSpeakerBadge : styles.assistantSpeakerBadge}>
+                          {isUser ? 'You' : 'AI Assistant'}
+                        </span>
+                        <span>· {turn.timestamp}</span>
+                        {turn.isPartial && (
+                          <span className={styles.partialPill}>
+                            <Activity size={10} /> Transcribing...
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        className={`${styles.turnBubble} ${
+                          isUser
+                            ? turn.isPartial
+                              ? styles.bubbleUserPartial
+                              : styles.bubbleUser
+                            : styles.bubbleAssistant
+                        }`}
+                      >
+                        {turn.text}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={transcriptEndRef} />
+            </div>
+          </div>
+
+          {/* VERIFIED TOOL INVOCATIONS DRAWER */}
+          <div className={styles.drawerSection}>
+            <div
+              className={styles.drawerHeader}
+              onClick={() => setIsToolsDrawerOpen(!isToolsDrawerOpen)}
+            >
+              <div className={styles.drawerTitleGroup}>
+                <Database size={15} color="#38bdf8" />
+                <span>Verified Business Tools Executed</span>
+                <span className={styles.badgeModel} style={{ fontSize: '10.5px' }}>
+                  {toolEvents.length} call(s)
+                </span>
+              </div>
+              {isToolsDrawerOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </div>
+
+            {isToolsDrawerOpen && (
+              <div className={styles.drawerBody}>
+                {toolEvents.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
+                    No tools called yet. Inquire about prices, offers, warranty, or delivery to see live tool calls.
+                  </div>
+                ) : (
+                  <div className={styles.toolList}>
+                    {toolEvents.map((evt) => (
+                      <div
+                        key={evt.id}
+                        className={`${styles.toolItem} ${
+                          evt.verified ? styles.toolItemVerified : styles.toolItemUnverified
+                        }`}
+                      >
+                        <div>
+                          <span className={styles.toolNameBadge}>{evt.toolName}()</span>
+                          <span style={{ color: '#cbd5e1' }}>{evt.summary}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '11px', color: '#94a3b8' }}>
+                          {evt.verified ? (
+                            <CheckCircle2 size={13} color="#10b981" />
+                          ) : (
+                            <AlertTriangle size={13} color="#ef4444" />
+                          )}
+                          <span>{evt.timestamp}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Live Data Synchronization & Price Invalidation Test Panel */}
-          <div className={styles.syncDrawer}>
+          {/* CATALOGUE SYNCHRONIZATION DRAWER */}
+          <div className={styles.drawerSection}>
             <div
-              className={styles.syncHeader}
+              className={styles.drawerHeader}
               onClick={() => setIsSyncDrawerOpen(!isSyncDrawerOpen)}
             >
-              <div className={styles.syncTitle}>
-                <RefreshCw size={14} />
-                <span>Live Catalogue Synchronization & Price Invalidation Test Bench</span>
+              <div className={styles.drawerTitleGroup}>
+                <RefreshCw size={14} color="#34d399" />
+                <span>Live Catalogue Sync & Price Invalidation Test Bench</span>
               </div>
               {isSyncDrawerOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
 
             {isSyncDrawerOpen && (
-              <div className={styles.syncContent}>
+              <div className={styles.drawerBody}>
                 <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>
-                  Modify a product price below to test <strong>Requirement H (Live Synchronization & Cache Invalidation)</strong>.
-                  When you update the price, the cache is instantly invalidated, version increments, and Gemini Live will quote the updated amount upon your next spoken query.
+                  Modify a product price below to verify cache invalidation. Gemini Live will quote the updated amount upon your next spoken query.
                 </p>
 
                 {syncStatusMsg && (
@@ -386,24 +552,22 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
             )}
           </div>
 
-          {/* Voice Model Discovery & Diagnostics Bench */}
-          <div className={styles.diagnosticsDrawer}>
+          {/* MODEL DISCOVERY & DIAGNOSTICS BENCH DRAWER */}
+          <div className={styles.drawerSection}>
             <div
-              className={styles.diagnosticsHeader}
+              className={styles.drawerHeader}
               onClick={() => setIsDiagnosticsOpen(!isDiagnosticsOpen)}
             >
-              <div className={styles.diagnosticsTitleGroup}>
+              <div className={styles.drawerTitleGroup}>
                 <Cpu size={15} color="#38bdf8" />
-                <span style={{ fontWeight: 600, fontSize: '13px', color: '#e2e8f0' }}>
-                  Voice Model Discovery, Diagnostics & Fallback Chain
-                </span>
-                <span className={styles.badgePrimary}>
+                <span>Voice Model Discovery & Diagnostics Bench</span>
+                <span className={styles.badgeModel} style={{ fontSize: '10.5px' }}>
                   Active: {activeModel}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <button
-                  className={styles.checkModelsBtn}
+                  className={styles.simBtn}
                   onClick={(e) => {
                     e.stopPropagation();
                     checkAvailableModels(true);
@@ -411,20 +575,15 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   disabled={isCheckingModels}
                   title="Interrogate Google Gemini models API"
                 >
-                  <RefreshCw size={12} className={isCheckingModels ? styles.spinIcon : ''} />
-                  <span>{isCheckingModels ? 'Probing Google API...' : 'Check Available Voice Models'}</span>
+                  <RefreshCw size={11} className={isCheckingModels ? styles.spinIcon : ''} />
+                  <span>{isCheckingModels ? 'Probing...' : 'Check Available Models'}</span>
                 </button>
                 {isDiagnosticsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
             </div>
 
             {isDiagnosticsOpen && (
-              <div className={styles.diagnosticsContent}>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>
-                  This diagnostics bench directly interrogates Google's official Gemini API (<code className={styles.setupAlertCode}>models.list()</code>) using your server credentials. It performs non-intrusive Live API handshakes to verify genuine account access, displays deterministic fallback priorities, and tests graceful degradation under rate limits.
-                </p>
-
-                {/* Models Table */}
+              <div className={styles.drawerBody}>
                 {discoveredModels.length > 0 ? (
                   <div className={styles.modelTableWrapper}>
                     <table className={styles.modelTable}>
@@ -434,7 +593,6 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                           <th>Official Live</th>
                           <th>Account Access</th>
                           <th>Live Handshake</th>
-                          <th>Status / Detail</th>
                           <th>Fallback Priority</th>
                         </tr>
                       </thead>
@@ -453,50 +611,18 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                                   <span style={{ fontWeight: 600, color: isActive ? '#38bdf8' : '#f1f5f9' }}>
                                     {m.modelId}
                                   </span>
-                                  {isActive && <span className={styles.badgePrimary}>ACTIVE</span>}
+                                  {isActive && <span className={styles.badgeModel}>ACTIVE</span>}
                                 </div>
-                                <div style={{ fontSize: '10.5px', color: '#64748b' }}>{m.displayName}</div>
                               </td>
+                              <td>{m.isOfficialLiveSupported ? '✓ Yes' : 'Standard'}</td>
+                              <td>{m.inAccountListing ? '✓ Listed' : 'Not Listed'}</td>
                               <td>
-                                {m.isOfficialLiveSupported ? (
-                                  <span style={{ color: '#34d399', fontWeight: 600 }}>✓ Yes</span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8' }}>Standard</span>
-                                )}
+                                {m.liveHandshakeStatus === 'PASS' && <span className={styles.badgePass}>✓ PASS</span>}
+                                {m.liveHandshakeStatus === 'FAIL' && <span className={styles.badgeFail}>✕ FAIL</span>}
+                                {m.liveHandshakeStatus === 'CONFIG_REQUIRED' && <span className={styles.badgeConfig}>CONFIG REQ</span>}
+                                {m.liveHandshakeStatus === 'UNTESTED' && 'Untested'}
                               </td>
-                              <td>
-                                {m.inAccountListing ? (
-                                  <span style={{ color: '#34d399', fontWeight: 600 }}>✓ Listed</span>
-                                ) : (
-                                  <span style={{ color: '#ef4444' }}>Not Listed</span>
-                                )}
-                              </td>
-                              <td>
-                                {m.liveHandshakeStatus === 'PASS' && (
-                                  <span className={styles.badgePass}>✓ PASS</span>
-                                )}
-                                {m.liveHandshakeStatus === 'FAIL' && (
-                                  <span className={styles.badgeFail}>✕ FAIL</span>
-                                )}
-                                {m.liveHandshakeStatus === 'CONFIG_REQUIRED' && (
-                                  <span className={styles.badgeConfig}>CONFIG REQ</span>
-                                )}
-                                {m.liveHandshakeStatus === 'UNTESTED' && (
-                                  <span style={{ color: '#94a3b8' }}>Untested</span>
-                                )}
-                              </td>
-                              <td>
-                                <span style={{ fontSize: '11px', color: m.failureDetail ? '#cbd5e1' : '#64748b' }}>
-                                  {m.failureDetail || 'Ready'}
-                                </span>
-                              </td>
-                              <td>
-                                {m.fallbackRank === 1 && <span className={styles.badgePrimary}>1 (Primary)</span>}
-                                {m.fallbackRank === 2 && <span className={styles.badgeSecondary}>2 (Secondary)</span>}
-                                {m.fallbackRank === 3 && <span className={styles.badgeTertiary}>3 (Tertiary)</span>}
-                                {m.fallbackRank > 3 && <span style={{ color: '#94a3b8' }}>Rank {m.fallbackRank}</span>}
-                                {m.fallbackRank === 0 && <span style={{ color: '#64748b' }}>Optional</span>}
-                              </td>
+                              <td>{m.fallbackRank > 0 ? `Rank ${m.fallbackRank}` : 'Optional'}</td>
                             </tr>
                           );
                         })}
@@ -504,25 +630,14 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                     </table>
                   </div>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: '16px', color: '#64748b', fontSize: '12px' }}>
-                    Click "Check Available Voice Models" to discover models accessible to your API key.
+                  <div style={{ textAlign: 'center', padding: '12px', color: '#64748b', fontSize: '12px' }}>
+                    Click &ldquo;Check Available Models&rdquo; to discover models accessible to your API key.
                   </div>
                 )}
 
-                {/* Quota & Access Explanation Disclaimer */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '6px', border: '1px solid rgba(245, 158, 11, 0.2)', color: '#fcd34d', fontSize: '11.5px' }}>
-                  <Info size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <div>
-                    <strong>Tier & Quota Notice:</strong> Google AI Studio accounts provide different RPM/TPM quotas per model. If a model returns 429 Rate Limit or Quota Exhausted, the system automatically and transparently falls back through the verified chain (<code className={styles.setupAlertCode}>{fallbackChain.join(' → ')}</code>) without dropping the audio stream.
-                  </div>
-                </div>
-
-                {/* Fallback Simulation Controls (for verification testing) */}
+                {/* Simulation controls */}
                 <div className={styles.simControls}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '11.5px', color: '#94a3b8', fontWeight: 600, width: '100%' }}>
-                    <Zap size={14} color="#f59e0b" />
-                    <span>Simulated Error Verification (Test Fallback Machine Gracefully)</span>
-                  </div>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Test Fallback Machine:</span>
                   <button
                     className={styles.simBtn}
                     onClick={() => simulateFallback('RATE_LIMIT_429', 'Simulated 429 Rate Limit')}
@@ -531,7 +646,7 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   </button>
                   <button
                     className={styles.simBtn}
-                    onClick={() => simulateFallback('QUOTA_EXHAUSTED', 'Simulated Quota Exhaustion')}
+                    onClick={() => simulateFallback('QUOTA_EXHAUSTED', 'Simulated Quota Limit')}
                   >
                     Simulate Quota Limit
                   </button>
@@ -543,12 +658,11 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Fallback History Log */}
                 {fallbackHistory.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: '11px', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
                     <div style={{ fontWeight: 600, marginBottom: 4, color: '#e2e8f0' }}>Recent Model Transitions:</div>
                     {fallbackHistory.map((h, i) => (
-                      <div key={i} style={{ padding: '3px 0' }}>
+                      <div key={i} style={{ padding: '2px 0' }}>
                         • {new Date(h.timestamp).toLocaleTimeString()}: {h.fromModel} → <span style={{ color: '#38bdf8', fontWeight: 600 }}>{h.toModel}</span> ({h.reason})
                       </div>
                     ))}
@@ -563,7 +677,7 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
         <div className={styles.modalFooter}>
           <div style={{ fontSize: '12px', color: '#64748b' }}>
             {isConnected ? (
-              <span>Streaming: 16kHz PCM input · 24kHz PCM output</span>
+              <span>Streaming: 16kHz PCM audio input · 24kHz PCM speech playback</span>
             ) : (
               <span>Offline · Ephemeral tokens enabled</span>
             )}
@@ -575,8 +689,10 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                 className={`${styles.muteBtn} ${isMuted ? styles.muteBtnActive : ''}`}
                 onClick={toggleMute}
                 title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
               >
-                {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+                {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                <span>{isMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
               </button>
             )}
 
@@ -585,13 +701,18 @@ export const CustomerVoiceAssistantModal: React.FC = () => {
                 className={styles.startBtn}
                 onClick={startSession}
                 disabled={isBusy}
+                aria-label="Start Voice Conversation"
               >
-                <Mic size={16} />
+                <Mic size={18} />
                 <span>{isBusy ? 'Connecting...' : 'Start Voice Conversation'}</span>
               </button>
             ) : (
-              <button className={styles.endBtn} onClick={endSession}>
-                <PhoneOff size={16} />
+              <button
+                className={styles.endBtn}
+                onClick={endSession}
+                aria-label="End Voice Conversation"
+              >
+                <PhoneOff size={18} />
                 <span>End Conversation</span>
               </button>
             )}

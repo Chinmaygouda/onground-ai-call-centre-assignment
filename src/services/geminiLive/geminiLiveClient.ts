@@ -28,6 +28,15 @@ export interface ToolExecutionEvent {
   version?: string;
 }
 
+export interface AudioTelemetry {
+  inputLevel: number;        // 0 to 1 RMS energy from microphone
+  outputLevel: number;       // 0 to 1 RMS energy from AI speaker output
+  isVoiceDetected: boolean;  // inputLevel >= 0.035 && !isMuted
+  isSendingAudio: boolean;   // PCM chunks being sent over WebSocket within last 350ms && inputLevel >= 0.035 && !isMuted
+  chunksSent: number;        // Total PCM chunks transmitted
+  bytesSent: number;         // Total bytes transmitted
+}
+
 export interface GeminiLiveClientOptions {
   primaryModel?: string;
   fallbackChain?: string[];
@@ -38,6 +47,8 @@ export interface GeminiLiveClientOptions {
   onToolExecuted: (event: ToolExecutionEvent) => void;
   onInterrupted: () => void;
   onAudioLevel?: (level: number, isAi: boolean) => void;
+  onAudioTelemetry?: (telemetry: AudioTelemetry) => void;
+  onAiThinkingChange?: (isThinking: boolean) => void;
   onModelFallback?: (event: ModelSwitchEvent) => void;
   onActiveModelChanged?: (model: string) => void;
 }
@@ -52,6 +63,10 @@ export class GeminiLiveClient {
   private isIntentionalDisconnect = false;
   private isSetupConfirmed = false;
   private setupTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private chunksSentCount = 0;
+  private bytesSentCount = 0;
+  private lastAudioSentTime = 0;
+  private isAiThinking = false;
 
   constructor(options: GeminiLiveClientOptions) {
     this.options = options;
@@ -79,6 +94,10 @@ export class GeminiLiveClient {
 
   public isSessionSetupConfirmed(): boolean {
     return this.isSetupConfirmed;
+  }
+
+  public getIsAiThinking(): boolean {
+    return this.isAiThinking;
   }
 
   private setState(newState: LiveConnectionState) {
@@ -113,10 +132,18 @@ export class GeminiLiveClient {
       this.isIntentionalDisconnect = false;
       this.disconnect();
 
+      this.chunksSentCount = 0;
+      this.bytesSentCount = 0;
+      this.lastAudioSentTime = 0;
+      this.isAiThinking = false;
+
       // 1. Request microphone permission and initialize 16kHz audio capture
       this.setState('REQUESTING_MIC');
       await this.audioProcessor.startRecording((base64Chunk) => {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN && !this.audioProcessor.getIsMuted()) {
+          this.chunksSentCount++;
+          this.bytesSentCount += Math.floor((base64Chunk.length * 3) / 4);
+          this.lastAudioSentTime = Date.now();
           const payload = {
             realtimeInput: {
               mediaChunks: [
@@ -332,6 +359,8 @@ export class GeminiLiveClient {
     // 1. Tool Call from Model
     if (msg.toolCall && msg.toolCall.functionCalls) {
       console.log('[GeminiLive:Client] Received Tool Call:', msg.toolCall);
+      this.isAiThinking = true;
+      this.options.onAiThinkingChange?.(true);
       const functionResponses = [];
 
       for (const fc of msg.toolCall.functionCalls) {
@@ -376,6 +405,8 @@ export class GeminiLiveClient {
       if (interrupted) {
         console.log('[GeminiLive:Client] User interrupted AI speech. Stopping playback.');
         this.audioProcessor.stopPlayback();
+        this.isAiThinking = false;
+        this.options.onAiThinkingChange?.(false);
         this.setState('LISTENING');
         this.options.onInterrupted();
       }
@@ -389,6 +420,8 @@ export class GeminiLiveClient {
       }
 
       if (modelTurn && modelTurn.parts) {
+        this.isAiThinking = false;
+        this.options.onAiThinkingChange?.(false);
         this.setState('SPEAKING');
 
         for (const part of modelTurn.parts) {
@@ -403,24 +436,58 @@ export class GeminiLiveClient {
       }
 
       if (turnComplete) {
+        this.isAiThinking = false;
+        this.options.onAiThinkingChange?.(false);
         this.setState('LISTENING');
       }
     }
   }
 
-  // Audio waveform visualizer pump
+  // Audio waveform visualizer pump with real-time telemetry metrics
   private startAudioVisualizerLoop() {
-    const dataArray = new Uint8Array(32);
+    const inputDataArray = new Uint8Array(32);
+    const outputDataArray = new Uint8Array(32);
 
     const checkAudio = () => {
-      if (this.state === 'SPEAKING' && this.audioProcessor.outputAnalyser) {
-        this.audioProcessor.outputAnalyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((acc, v) => acc + v, 0) / dataArray.length;
-        if (this.options.onAudioLevel) this.options.onAudioLevel(avg / 255, true);
-      } else if (this.audioProcessor.inputAnalyser) {
-        this.audioProcessor.inputAnalyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((acc, v) => acc + v, 0) / dataArray.length;
-        if (this.options.onAudioLevel) this.options.onAudioLevel(avg / 255, false);
+      let inputLevel = 0;
+      let outputLevel = 0;
+
+      if (this.audioProcessor.inputAnalyser && !this.audioProcessor.getIsMuted()) {
+        this.audioProcessor.inputAnalyser.getByteFrequencyData(inputDataArray);
+        const sum = inputDataArray.reduce((acc, v) => acc + v, 0);
+        inputLevel = sum / (inputDataArray.length * 255);
+      }
+
+      if (this.audioProcessor.outputAnalyser && this.state === 'SPEAKING') {
+        this.audioProcessor.outputAnalyser.getByteFrequencyData(outputDataArray);
+        const sum = outputDataArray.reduce((acc, v) => acc + v, 0);
+        outputLevel = sum / (outputDataArray.length * 255);
+      }
+
+      const isMuted = this.audioProcessor.getIsMuted();
+      const isVoiceDetected = !isMuted && inputLevel >= 0.035;
+      const isSendingAudio =
+        !isMuted &&
+        Date.now() - this.lastAudioSentTime < 350 &&
+        inputLevel >= 0.035;
+
+      if (this.options.onAudioLevel) {
+        if (this.state === 'SPEAKING') {
+          this.options.onAudioLevel(outputLevel, true);
+        } else {
+          this.options.onAudioLevel(inputLevel, false);
+        }
+      }
+
+      if (this.options.onAudioTelemetry) {
+        this.options.onAudioTelemetry({
+          inputLevel,
+          outputLevel,
+          isVoiceDetected,
+          isSendingAudio,
+          chunksSent: this.chunksSentCount,
+          bytesSent: this.bytesSentCount
+        });
       }
 
       this.animationFrameId = requestAnimationFrame(checkAudio);
@@ -441,6 +508,18 @@ export class GeminiLiveClient {
     this.audioProcessor.setMute(muted);
   }
 
+  // Get current audio telemetry summary
+  public getTelemetry(): AudioTelemetry {
+    return {
+      inputLevel: 0,
+      outputLevel: 0,
+      isVoiceDetected: false,
+      isSendingAudio: false,
+      chunksSent: this.chunksSentCount,
+      bytesSent: this.bytesSentCount
+    };
+  }
+
   // Disconnect session and release all audio/network resources
   public disconnect(): void {
     this.isIntentionalDisconnect = true;
@@ -451,6 +530,11 @@ export class GeminiLiveClient {
     this.isSetupConfirmed = false;
     this.stopAudioVisualizerLoop();
     this.audioProcessor.dispose();
+
+    this.chunksSentCount = 0;
+    this.bytesSentCount = 0;
+    this.lastAudioSentTime = 0;
+    this.isAiThinking = false;
 
     if (this.ws) {
       try {

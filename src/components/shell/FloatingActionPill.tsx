@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Phone, ShieldCheck } from 'lucide-react';
+import { Phone, ShieldCheck, Headphones } from 'lucide-react';
 import { useCalling } from '../../context/CallingContext';
 import { useAppState } from '../../context/AppStateContext';
+import { useGeminiLive } from '../../context/GeminiLiveContext';
 import styles from './FloatingActionPill.module.css';
 
 export const FloatingActionPill: React.FC = () => {
   const { startCall, tabSessionId } = useCalling();
   const { openLeadsModal } = useAppState();
+  const { openModal, connectionState } = useGeminiLive();
   const [showSecurityTooltip, setShowSecurityTooltip] = useState(false);
+
+  const isLive = connectionState === 'LISTENING' || connectionState === 'SPEAKING';
 
   const handleDemoClick = () => {
     // Open Leads Modal as the showcase demo
@@ -38,6 +42,18 @@ export const FloatingActionPill: React.FC = () => {
     <div className={styles.floatingWrapper}>
       <button className={styles.demoBadge} onClick={handleDemoClick} title="Launch Showcase Lead Modal Demo">
         DEMO
+      </button>
+
+      {/* Voice Assistant Floating Action Button */}
+      <button
+        className={`${styles.pillButton} ${styles.voiceAssistantBtn} ${isLive ? styles.voiceAssistantActive : ''}`}
+        onClick={openModal}
+        title="Voice Assistant (Gemini Live real-time voice conversation)"
+        aria-label="Voice Assistant"
+      >
+        <Headphones size={13} className={styles.voiceAssistantIcon} />
+        <span>Voice Assistant</span>
+        {isLive && <span className={styles.liveIndicatorDot} />}
       </button>
 
       <button
