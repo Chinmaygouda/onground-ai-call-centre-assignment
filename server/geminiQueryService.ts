@@ -53,11 +53,15 @@ export async function executeGeminiQuery(
 
   // Format valid prior history turns for multi-turn conversational context
   const formattedHistory = (history || [])
-    .filter((h) => h.text && h.text.trim())
-    .map((h) => ({
-      role: h.speaker === 'user' ? 'user' : 'model',
-      parts: [{ text: h.text }]
-    }));
+    .map((h: any) => {
+      const text = (h.text || h.parts?.[0]?.text || '').trim();
+      const isUser = h.speaker === 'user' || h.role === 'user';
+      return {
+        role: isUser ? 'user' : 'model',
+        parts: [{ text }]
+      };
+    })
+    .filter((h) => h.parts[0].text.length > 0);
 
   // Prioritize requested model, then fall back through candidate chain if rate limit or quota is hit
   const modelsToTry = [model, ...CANDIDATE_QUERY_MODELS.filter((m) => m !== model)];
@@ -191,7 +195,11 @@ export async function handleGeminiQueryRequest(
         return;
       }
 
-      const history = Array.isArray(parsed.history) ? parsed.history : undefined;
+      const history = Array.isArray(parsed.history)
+        ? parsed.history
+        : Array.isArray(parsed.conversationHistory)
+        ? parsed.conversationHistory
+        : undefined;
       const result = await executeGeminiQuery(question, activeKey, model, history);
 
       const payload: QueryResponsePayload = {
