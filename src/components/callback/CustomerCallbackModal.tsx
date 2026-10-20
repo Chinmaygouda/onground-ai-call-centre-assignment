@@ -24,6 +24,10 @@ import { useGeminiLive } from '../../context/GeminiLiveContext';
 import { ClickToCallButton } from '../common/ClickToCallButton';
 import { normalizePhoneNumber } from '../../utils/phoneUtils';
 import { RecentCall } from '../../types';
+import {
+  BrowserSpeechRecognition,
+  SpeechTranscriptEvent
+} from '../../services/geminiLive/browserSpeechRecognition';
 import styles from './CustomerCallbackModal.module.css';
 
 export const CLIENT_VOICE_UTTERANCES = [
@@ -51,8 +55,6 @@ export const CustomerCallbackModal: React.FC = () => {
   } = useAppState();
 
   const {
-    voiceActivityState,
-    audioLevel,
     isAiSpeaking,
     isAiThinking,
     isMuted,
@@ -85,14 +87,42 @@ export const CustomerCallbackModal: React.FC = () => {
   >([]);
   const [savedRecentCall, setSavedRecentCall] = useState<RecentCall | null>(null);
 
-  // Client audible voice speech state
-  const [isClientSpeaking, setIsClientSpeaking] = useState<boolean>(false);
-  const [clientSpeakingText, setClientSpeakingText] = useState<string>('');
+  // Client Microphone & Live Audio Recording State
+  const [isMicListening, setIsMicListening] = useState<boolean>(false);
+  const [clientTranscriptInterim, setClientTranscriptInterim] = useState<string>('');
+  const [clientMicLevel, setClientMicLevel] = useState<number>(0);
+  const [micErrorNotice, setMicErrorNotice] = useState<string | null>(null);
+
+  const speechRecRef = useRef<BrowserSpeechRecognition | null>(null);
+  const clientRecognizedTextRef = useRef<string>('');
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const stageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const greetingRef = useRef<{ id: string; speaker: 'ai'; text: string; time: string } | null>(null);
+
+  // Global cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      if (speechRecRef.current) {
+        speechRecRef.current.stop();
+        speechRecRef.current = null;
+      }
+    };
+  }, []);
 
   // Initialize or reset when customer changes
   useEffect(() => {
@@ -106,8 +136,10 @@ export const CustomerCallbackModal: React.FC = () => {
       );
       setElapsedSeconds(0);
       setCallTurnStage('dialing');
-      setIsClientSpeaking(false);
-      setClientSpeakingText('');
+      setIsMicListening(false);
+      setClientTranscriptInterim('');
+      setClientMicLevel(0);
+      setMicErrorNotice(null);
       setSavedRecentCall(null);
       setLiveTranscript([]);
       greetingRef.current = null;
@@ -143,7 +175,7 @@ export const CustomerCallbackModal: React.FC = () => {
     if (transcriptEndRef.current) {
       transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [liveTranscript, isAiThinking, callTurnStage, isClientSpeaking]);
+  }, [liveTranscript, isAiThinking, callTurnStage, isMicListening]);
 
   // Cleanup timers and speech on unmount
   useEffect(() => {
@@ -202,70 +234,6 @@ export const CustomerCallbackModal: React.FC = () => {
       osc2.stop(ctx.currentTime + durationMs / 1000);
     } catch {
       // Audio context might be restricted
-    }
-  };
-
-  // Dedicated audible voice speaker for the client (uses distinct pitch and client voice profile)
-  const speakClientVoice = (text: string, onEnd?: () => void) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      if (onEnd) onEnd();
-      return;
-    }
-
-    try {
-      window.speechSynthesis.cancel();
-      const cleanText = text
-        .replace(/[*_#`~[\]]/g, '')
-        .replace(/https?:\/\/\S+/g, '')
-        .replace(/₹\s*/g, 'Rupees ');
-
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 1.0;
-      utterance.pitch = 0.88; // Distinct customer tone (deeper than AI assistant)
-      utterance.lang = 'en-IN';
-
-      const voices = window.speechSynthesis.getVoices();
-      const clientVoice =
-        voices.find(
-          (v) =>
-            v.lang.startsWith('en') &&
-            (v.name.includes('David') ||
-              v.name.includes('Mark') ||
-              v.name.includes('George') ||
-              v.name.includes('Guy') ||
-              v.name.includes('Male'))
-        ) ||
-        voices.find((v) => v.lang.startsWith('en') && !v.name.includes('Google') && !v.name.includes('Zira')) ||
-        voices[0];
-
-      if (clientVoice) {
-        utterance.voice = clientVoice;
-      }
-
-      utterance.onstart = () => {
-        setIsClientSpeaking(true);
-        setClientSpeakingText(text);
-      };
-
-      utterance.onend = () => {
-        setIsClientSpeaking(false);
-        setClientSpeakingText('');
-        if (onEnd) onEnd();
-      };
-
-      utterance.onerror = (e) => {
-        console.warn('[speakClientVoice] Notice:', e);
-        setIsClientSpeaking(false);
-        setClientSpeakingText('');
-        if (onEnd) onEnd();
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.warn('[speakClientVoice] Error:', err);
-      setIsClientSpeaking(false);
-      setClientSpeakingText('');
-      if (onEnd) onEnd();
     }
   };
 
@@ -335,8 +303,9 @@ export const CustomerCallbackModal: React.FC = () => {
     setStep('ai_workspace');
     setCallTurnStage('dialing');
     setElapsedSeconds(0);
-    setIsClientSpeaking(false);
-    setClientSpeakingText('');
+    setIsMicListening(false);
+    setClientTranscriptInterim('');
+    setClientMicLevel(0);
     greetingRef.current = null;
 
     // 1. Play realistic telephone ringing tone
@@ -393,14 +362,12 @@ export const CustomerCallbackModal: React.FC = () => {
       if (aiVoice) greetingUtterance.voice = aiVoice;
 
       greetingUtterance.onend = () => {
-        // Greeting finished — hand floor to client
-        triggerAutomaticClientSpeech();
+        // Greeting finished — floor opens directly for the client to speak!
+        setCallTurnStage('client_turn');
       };
       greetingUtterance.onerror = () => {
-        // Fallback: give the client the floor after a short pause
-        stageTimeoutRef.current = setTimeout(() => {
-          triggerAutomaticClientSpeech();
-        }, 800);
+        // Fallback: give the client the floor
+        setCallTurnStage('client_turn');
       };
 
       if (window.speechSynthesis) {
@@ -409,57 +376,120 @@ export const CustomerCallbackModal: React.FC = () => {
       } else {
         // No TTS available: go straight to client turn
         stageTimeoutRef.current = setTimeout(() => {
-          triggerAutomaticClientSpeech();
+          setCallTurnStage('client_turn');
         }, 1000);
       }
     }, 1200);
   };
 
-  // Client speaks automatically upon greeting completion
-  const triggerAutomaticClientSpeech = () => {
-    if (!callbackCustomer) return;
+  // Start listening to the employee/user speaking as the client into their microphone
+  const startClientListening = async () => {
+    if (callTurnStage !== 'client_turn' || isAiSpeaking || isAiThinking) return;
 
-    setCallTurnStage('client_turn');
+    setMicErrorNotice(null);
+    setIsMicListening(true);
+    setClientTranscriptInterim('');
+    clientRecognizedTextRef.current = '';
 
-    // Customer natural voice inquiry tailored to customer record
-    let clientQuestion = 'Yeah, I was inquiring about the SmartGRID Ortho mattress. Is Queen size in stock?';
-    if (callbackCustomer.name.includes('Faizan') || callbackCustomer.expectedValue === 24990) {
-      clientQuestion = 'Yeah, I was inquiring about the SmartGRID Ortho mattress. Is Queen size in stock?';
-    } else if (callbackCustomer.name.includes('Kavitha')) {
-      clientQuestion = 'Yeah, I was calling to check the current festive discounts on the SmartGRID Luxe King mattress.';
-    } else if (callbackCustomer.name.includes('Divya')) {
-      clientQuestion = 'Hello, yes I was inquiring about the Elevate Adjustable Bed quote and delivery options.';
-    } else if (callbackCustomer.name.includes('Ritu')) {
-      clientQuestion = 'Hi, I was looking for the SmartGRID mattress and wanted to check if 0% interest EMI is available.';
+    // 1. Audio stream & analyser for live mic waveform
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStreamRef.current = stream;
+
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          audioCtxRef.current = ctx;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          analyserRef.current = analyser;
+          const source = ctx.createMediaStreamSource(stream);
+          source.connect(analyser);
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          const updateAudioLevel = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / dataArray.length;
+            setClientMicLevel(Math.min(100, Math.round((avg / 128) * 100)));
+            animFrameRef.current = requestAnimationFrame(updateAudioLevel);
+          };
+          updateAudioLevel();
+        }
+      }
+    } catch (err: any) {
+      console.warn('[CustomerCallbackModal] Mic stream notice:', err);
+      if (err.name === 'NotAllowedError') {
+        setMicErrorNotice(
+          'Microphone permission was denied. Please allow microphone permissions in your browser address bar.'
+        );
+      }
     }
 
-    const clientTurnTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // 2. Real-time Browser Speech Recognition (STT)
+    try {
+      const rec = new BrowserSpeechRecognition(
+        (evt: SpeechTranscriptEvent) => {
+          if (evt.text && evt.text.trim().length > 0) {
+            setClientTranscriptInterim(evt.text);
+            clientRecognizedTextRef.current = evt.text;
+          }
+        },
+        (err) => {
+          console.warn('[CustomerCallbackModal] Speech recognition notice:', err);
+        }
+      );
+      rec.start();
+      speechRecRef.current = rec;
+    } catch (e) {
+      console.warn('[CustomerCallbackModal] Speech recognition init notice:', e);
+    }
+  };
 
-    // Show customer's dialogue in transcript immediately
-    const clientTurnRecord = {
-      id: `client-turn-${Date.now()}`,
-      speaker: 'client' as const,
-      text: clientQuestion,
-      time: clientTurnTime
-    };
+  // Stop listening and optionally submit question
+  const stopClientListening = (shouldSubmit = true) => {
+    setIsMicListening(false);
 
-    setLiveTranscript((prev) => {
-      const base = greetingRef.current ? [greetingRef.current] : [];
-      const others = prev.filter((p) => p.id !== 'ai-greeting');
-      return [...base, ...others, clientTurnRecord];
-    });
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
+    setClientMicLevel(0);
 
-    // Speak customer's voice aloud through speakers — then hand off to AI
-    speakClientVoice(clientQuestion, async () => {
-      // Once customer finishes speaking, AI responds with executeAiTurn (not askQuestion)
-      // executeAiTurn manages local transcript + speech + turn-pacing without touching STT
-      await executeAiTurn(clientQuestion);
-    });
+    if (speechRecRef.current) {
+      speechRecRef.current.stop();
+      speechRecRef.current = null;
+    }
+
+    const capturedText = (clientRecognizedTextRef.current || clientTranscriptInterim).trim();
+    setClientTranscriptInterim('');
+    clientRecognizedTextRef.current = '';
+
+    if (shouldSubmit && capturedText.length > 0) {
+      handleClientUtterance(capturedText);
+    }
   };
 
   // Self-contained AI query: calls server directly, writes to local liveTranscript,
   // and speaks the response with a proper onend callback so turn-pacing is correct.
   const executeAiTurn = async (question: string) => {
+    if (isMicListening) {
+      stopClientListening(false);
+    }
     setCallTurnStage('ai_responding');
 
     try {
@@ -557,16 +587,22 @@ export const CustomerCallbackModal: React.FC = () => {
     }
   };
 
-  // Client speaks (via simulated client voice trigger or microphone)
+  // Client speaks (via microphone or 1-click inquiry chip)
   const handleClientUtterance = (clientSpeech: string) => {
+    const trimmed = clientSpeech.trim();
+    if (!trimmed) return;
+
     if (
       callTurnStage === 'dialing' ||
       callTurnStage === 'ai_greeting' ||
       isAiThinking ||
-      isAiSpeaking ||
-      isClientSpeaking
+      isAiSpeaking
     ) {
       return;
+    }
+
+    if (isMicListening) {
+      stopClientListening(false);
     }
 
     setCallTurnStage('client_turn');
@@ -575,25 +611,24 @@ export const CustomerCallbackModal: React.FC = () => {
     const clientTurnRecord = {
       id: `client-turn-${Date.now()}`,
       speaker: 'client' as const,
-      text: clientSpeech,
+      text: trimmed,
       time: clientTurnTime
     };
 
     setLiveTranscript((prev) => [...prev, clientTurnRecord]);
 
-    // Speak the client's voice aloud first so the interaction is heard!
-    speakClientVoice(clientSpeech, async () => {
-      await executeAiTurn(clientSpeech);
-    });
+    // Send inquiry to AI
+    executeAiTurn(trimmed);
   };
 
   // End AI Conversation
   const handleEndAiConversation = () => {
+    if (isMicListening) {
+      stopClientListening(false);
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
-    setIsClientSpeaking(false);
-    setClientSpeakingText('');
     stopSpeaking();
     // endSession() intentionally omitted — no session was started.
     setCallTurnStage('ended');
@@ -646,18 +681,13 @@ export const CustomerCallbackModal: React.FC = () => {
           let colorClass = styles.waveBar;
 
           if (isAiSpeaking || callTurnStage === 'ai_greeting') {
-            // AI is speaking
+            // AI is speaking over telephone line
             const wave = Math.sin((idx + Date.now() / 150) * 0.8);
             height = Math.max(10, Math.floor(25 + wave * 22));
             colorClass = `${styles.waveBar} ${styles.waveBarActiveBlue}`;
-          } else if (isClientSpeaking) {
-            // Client is speaking audibly
-            const wave = Math.sin((idx + Date.now() / 110) * 0.9);
-            height = Math.max(12, Math.floor(28 + wave * 22));
-            colorClass = `${styles.waveBar} ${styles.waveBarActiveGreen}`;
-          } else if (voiceActivityState === 'VOICE_DETECTED' || audioLevel > 5) {
-            // Client is speaking into mic
-            const dynamicScale = Math.min(50, Math.max(12, (audioLevel / 100) * 55 + (idx % 3) * 6));
+          } else if (isMicListening) {
+            // User is actively speaking as client into live microphone
+            const dynamicScale = Math.min(50, Math.max(12, (clientMicLevel / 100) * 55 + (idx % 3) * 6));
             height = dynamicScale;
             colorClass = `${styles.waveBar} ${styles.waveBarActiveGreen}`;
           } else if (callTurnStage === 'client_turn') {
@@ -1061,7 +1091,7 @@ export const CustomerCallbackModal: React.FC = () => {
                           ? styles.statusPillConnecting
                           : callTurnStage === 'ai_greeting' || isAiSpeaking
                           ? styles.statusPillSpeaking
-                          : isClientSpeaking
+                          : isMicListening
                           ? styles.statusPillConnected
                           : callTurnStage === 'ai_responding' || isAiThinking
                           ? styles.statusPillConnecting
@@ -1076,15 +1106,13 @@ export const CustomerCallbackModal: React.FC = () => {
                           ? 'Dialling Client · Ringing...'
                           : callTurnStage === 'ai_greeting'
                           ? 'AI Speaking Greeting'
-                          : isClientSpeaking
+                          : isMicListening
                           ? `Client Speaking (${callbackCustomer.name})`
                           : isAiThinking || callTurnStage === 'ai_responding'
                           ? 'AI Checking Stock'
                           : isAiSpeaking
                           ? 'AI Speaking Answer'
-                          : voiceActivityState === 'VOICE_DETECTED'
-                          ? 'Client Voice Detected'
-                          : 'Client Turn · Listening'}
+                          : 'Client Turn · Ready'}
                       </span>
                     </div>
 
@@ -1100,15 +1128,13 @@ export const CustomerCallbackModal: React.FC = () => {
                         ? `Outbound call connecting to client ${callbackCustomer.name} (${callbackCustomer.phone})...`
                         : callTurnStage === 'ai_greeting'
                         ? 'AI agent is introducing the call to the client over voice...'
-                        : isClientSpeaking
-                        ? `Client ${callbackCustomer.name} is speaking inquiry aloud over telephone...`
+                        : isMicListening
+                        ? `Listening to ${callbackCustomer.name} speaking inquiry over microphone...`
                         : isAiThinking
                         ? 'AI agent is consulting verified inventory...'
                         : isAiSpeaking
                         ? 'AI agent is speaking factual answer aloud over voice...'
-                        : voiceActivityState === 'VOICE_DETECTED'
-                        ? 'Client speech detected on line.'
-                        : 'Line is open · Client can speak into microphone or select voice trigger below.'}
+                        : 'Floor is open · Speak into microphone as the client or select a sample enquiry.'}
                     </p>
                   </div>
                 </div>
@@ -1213,8 +1239,8 @@ export const CustomerCallbackModal: React.FC = () => {
                     </div>
                   ))}
 
-                  {/* Real-time indicator when client is speaking aloud */}
-                  {isClientSpeaking && (
+                  {/* Real-time indicator when client is speaking into microphone */}
+                  {isMicListening && (
                     <div
                       className={styles.liveSpeakingCard}
                       style={{
@@ -1225,7 +1251,7 @@ export const CustomerCallbackModal: React.FC = () => {
                     >
                       <Volume2 size={14} />
                       <span>
-                        Client ({callbackCustomer.name}) is speaking inquiry aloud...
+                        Client ({callbackCustomer.name}) is speaking inquiry into microphone...
                       </span>
                     </div>
                   )}
@@ -1263,22 +1289,22 @@ export const CustomerCallbackModal: React.FC = () => {
                             ? styles.voiceTurnTextAmber
                             : callTurnStage === 'ai_greeting' || isAiSpeaking
                             ? styles.voiceTurnTextPurple
-                            : isClientSpeaking
-                            ? styles.voiceTurnTextGreen
+                            : isMicListening
+                            ? styles.voiceTurnTextRed
                             : styles.voiceTurnTextGreen
                         }
                       >
                         {callTurnStage === 'dialing'
                           ? 'Outbound Call Connecting...'
                           : callTurnStage === 'ai_greeting'
-                          ? 'AI is Speaking Opening Greeting (Client Listening)'
-                          : isClientSpeaking
-                          ? `Client Speaking: "${clientSpeakingText}"`
+                          ? 'AI is Delivering Opening Greeting (Client Listening)'
                           : isAiSpeaking
-                          ? 'AI is Speaking Answer Aloud'
+                          ? 'AI Agent is Speaking Verified Answer Over Phone'
                           : isAiThinking
-                          ? 'AI is Checking Stock...'
-                          : 'Line Open · Client Can Speak Now'}
+                          ? 'AI is Consulting Live Warehouse Tools...'
+                          : isMicListening
+                          ? `Listening to your voice as ${callbackCustomer.name}...`
+                          : `Line Open · Speak as Client (${callbackCustomer.name})`}
                       </span>
                     </div>
 
@@ -1294,50 +1320,115 @@ export const CustomerCallbackModal: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Client Voice Utterance Triggers */}
-                  <div className={styles.voiceClientTriggersSection}>
-                    <div className={styles.triggersLabelRow}>
-                      <span>
-                        {callTurnStage === 'ai_greeting' || callTurnStage === 'dialing'
-                          ? 'Client cannot speak until AI completes greeting'
-                          : isClientSpeaking
-                          ? 'Client is speaking enquiry over phone line'
-                          : 'Client Spoken Voice Triggers (Microphone or Instant Utterance):'}
-                      </span>
-                      {callTurnStage === 'client_turn' && !isClientSpeaking && (
-                        <span style={{ color: '#34d399' }}>● Mic Ready</span>
-                      )}
-                    </div>
+                  {/* HERO CLIENT MICROPHONE CONSOLE */}
+                  {callTurnStage === 'client_turn' && !isAiSpeaking && !isAiThinking && (
+                    <div className={styles.clientVoiceStation}>
+                      {!isMicListening ? (
+                        <div className={styles.micPromptWrapper}>
+                          <button
+                            className={styles.btnSpeakAsClient}
+                            onClick={startClientListening}
+                            title="Click to speak your question into your microphone"
+                          >
+                            <div className={styles.micIconPulseRing}>
+                              <Mic size={24} />
+                            </div>
+                            <div className={styles.btnSpeakContent}>
+                              <span className={styles.btnSpeakTitle}>
+                                Click to Speak as Client ({callbackCustomer.name})
+                              </span>
+                              <span className={styles.btnSpeakSub}>
+                                Ask about mattress models, Queen/King stock, discounts, warranty, or delivery
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={styles.micActiveRecordingCard}>
+                          <div className={styles.recordingHeader}>
+                            <div className={styles.recordingPulseDot} />
+                            <span className={styles.recordingTitle}>
+                              Listening to your microphone... Speak your inquiry now!
+                            </span>
+                          </div>
 
-                    <div className={styles.voiceTriggersGrid}>
-                      {CLIENT_VOICE_UTTERANCES.map((utterance, idx) => (
-                        <button
-                          key={idx}
-                          className={styles.voiceTriggerBtn}
-                          onClick={() => handleClientUtterance(utterance)}
-                          disabled={
-                            callTurnStage === 'dialing' ||
-                            callTurnStage === 'ai_greeting' ||
-                            isAiThinking ||
-                            isAiSpeaking ||
-                            isClientSpeaking
-                          }
-                          title={
-                            callTurnStage === 'ai_greeting'
-                              ? 'Waiting for AI to finish speaking greeting'
-                              : isClientSpeaking
-                              ? 'Client is currently speaking'
-                              : isAiSpeaking
-                              ? 'AI is currently speaking'
-                              : `Simulate client saying: "${utterance}"`
-                          }
-                        >
-                          <Mic size={14} className={styles.voiceTriggerIcon} />
-                          <span>Client: &quot;{utterance}&quot;</span>
-                        </button>
-                      ))}
+                          <div className={styles.interimTranscriptBubble}>
+                            {clientTranscriptInterim ? (
+                              <span className={styles.interimText}>&ldquo;{clientTranscriptInterim}&rdquo;</span>
+                            ) : (
+                              <span className={styles.interimPlaceholder}>
+                                Speak into your mic (e.g. &ldquo;Is the Queen size Ortho mattress available?&rdquo;)...
+                              </span>
+                            )}
+                          </div>
+
+                          <div className={styles.recordingActionsRow}>
+                            <button
+                              className={styles.btnDoneSpeaking}
+                              onClick={() => stopClientListening(true)}
+                              disabled={!clientTranscriptInterim.trim()}
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>Done Speaking · Send to AI</span>
+                            </button>
+                            <button
+                              className={styles.btnCancelSpeaking}
+                              onClick={() => stopClientListening(false)}
+                            >
+                              <X size={15} />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {micErrorNotice && (
+                        <div className={styles.micErrorAlert}>
+                          <AlertCircle size={15} />
+                          <span>{micErrorNotice}</span>
+                        </div>
+                      )}
+
+                      {/* Quick Inquiry Chips (1-click ask) */}
+                      <div className={styles.chipsSection}>
+                        <div className={styles.chipsLabel}>
+                          <span>Or tap a question to ask instantly:</span>
+                        </div>
+                        <div className={styles.chipsRow}>
+                          {CLIENT_VOICE_UTTERANCES.map((inquiry, idx) => (
+                            <button
+                              key={idx}
+                              className={styles.quickInquiryChip}
+                              onClick={() => handleClientUtterance(inquiry)}
+                              disabled={isMicListening || isAiSpeaking || isAiThinking}
+                            >
+                              <Mic size={13} style={{ opacity: 0.7 }} />
+                              <span>{inquiry}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {/* AI Speaking Notice Card (Microphone Gated) */}
+                  {(callTurnStage === 'ai_greeting' || isAiSpeaking || isAiThinking) && (
+                    <div className={styles.aiSpeakingNoticeCard}>
+                      <Volume2 size={18} className={styles.aiNoticeIcon} />
+                      <div>
+                        <div className={styles.aiNoticeTitle}>
+                          {callTurnStage === 'ai_greeting'
+                            ? 'AI Agent is delivering opening phone greeting...'
+                            : isAiThinking
+                            ? 'AI is verifying Sleep Company warehouse inventory...'
+                            : 'AI Agent is speaking verified answer over the phone line...'}
+                        </div>
+                        <div className={styles.aiNoticeSub}>
+                          Client microphone is automatically muted to ensure echo-free, crystal-clear telephone audio.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
