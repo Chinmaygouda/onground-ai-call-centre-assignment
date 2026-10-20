@@ -13,6 +13,9 @@ import { CallingModal } from './components/calling/CallingModal';
 import { GeminiLiveProvider } from './context/GeminiLiveContext';
 import { CustomerVoiceAssistantModal } from './components/geminiLive/CustomerVoiceAssistantModal';
 import { CustomerCallbackModal } from './components/callback/CustomerCallbackModal';
+import { CreateLeadModal } from './components/common/CreateLeadModal';
+import { CreateEventModal } from './components/common/CreateEventModal';
+import { DailyBriefModal } from './components/pulse/DailyBriefModal';
 
 import styles from './App.module.css';
 
@@ -66,6 +69,9 @@ const AppContent: React.FC = () => {
       <CallingModal />
       <CustomerVoiceAssistantModal />
       <CustomerCallbackModal />
+      <CreateLeadModal />
+      <CreateEventModal />
+      <DailyBriefModal />
     </div>
   );
 };

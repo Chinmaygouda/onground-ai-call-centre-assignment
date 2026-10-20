@@ -5,13 +5,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  UserCheck
+  UserCheck,
+  Plus
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import styles from './CalendarView.module.css';
 
 export const CalendarView: React.FC = () => {
-  const { calendarEvents } = useAppState();
+  const { calendarEvents, setIsCreateEventModalOpen } = useAppState();
 
   // Reference date: October 2026, today = Oct 9th
   const [currentYear, setCurrentYear] = useState<number>(2026);
@@ -64,13 +65,25 @@ export const CalendarView: React.FC = () => {
     <div className={styles.calendarContainer}>
       {/* Header */}
       <div className={styles.calendarHeader}>
-        <div className={styles.titleRow}>
-          <CalendarIcon size={18} color="#047857" />
-          <h2 className={styles.calendarTitle}>Calendar</h2>
+        <div className={styles.headerTopRow}>
+          <div>
+            <div className={styles.titleRow}>
+              <CalendarIcon size={18} color="#047857" />
+              <h2 className={styles.calendarTitle}>Calendar</h2>
+            </div>
+            <p className={styles.calendarSubtitle}>
+              Mirrored from your mailbox — invites created here land there too
+            </p>
+          </div>
+          <button
+            className={styles.scheduleBtn}
+            onClick={() => setIsCreateEventModalOpen(true)}
+            title="Schedule a new coaching session or store visit"
+          >
+            <Plus size={15} />
+            <span>+ Schedule Event</span>
+          </button>
         </div>
-        <p className={styles.calendarSubtitle}>
-          Mirrored from your mailbox — invites created here land there too
-        </p>
       </div>
 
       {/* Sync notice banner */}
@@ -135,9 +148,14 @@ export const CalendarView: React.FC = () => {
               const isToday = currentYear === 2026 && currentMonthIndex === 9 && day === 9;
               const isSelected = selectedDay === day;
 
-              // Check for event dots (e.g. days 23, 26, 28 in October)
-              const hasEvents =
-                currentMonthIndex === 9 && (day === 23 || day === 26 || day === 28);
+              const cellDateStr = `${currentYear}-${(currentMonthIndex + 1)
+                .toString()
+                .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+              // Dynamic check across all calendar events
+              const hasEvents = calendarEvents.some(
+                (ev) => ev.dateStr === cellDateStr || (currentMonthIndex === 9 && ev.dayNumber === day)
+              );
 
               return (
                 <div

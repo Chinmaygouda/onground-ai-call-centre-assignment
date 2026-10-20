@@ -7,7 +7,10 @@ import {
   CalendarEvent,
   ChatMessage,
   PinnedDecision,
-  AgentProfile
+  AgentProfile,
+  PulseChannel,
+  PulseWeek,
+  ShiftNotification
 } from '../types';
 import {
   mockAgent,
@@ -16,7 +19,10 @@ import {
   mockRecentCalls,
   mockCalendarEvents,
   mockChatMessages,
-  mockPinnedDecision
+  mockPinnedDecision,
+  mockPulseChannels,
+  mockPulseWeeks,
+  mockNotifications
 } from '../data/mockData';
 
 interface AppStateContextType {
@@ -27,10 +33,13 @@ interface AppStateContextType {
   isMobileNavOpen: boolean;
   setIsMobileNavOpen: (open: boolean) => void;
   agent: AgentProfile;
+  updateAgentQueueStatus: (status: 'On Queue' | 'Paused' | 'Break') => void;
   leads: Lead[];
+  addNewLead: (lead: Omit<Lead, 'id'>) => void;
   missedCalls: MissedCall[];
   recentCalls: RecentCall[];
   calendarEvents: CalendarEvent[];
+  addNewCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
   chatMessages: ChatMessage[];
   pinnedDecision: PinnedDecision;
   isLeadsModalOpen: boolean;
@@ -38,9 +47,44 @@ interface AppStateContextType {
   openLeadsModal: (index?: number) => void;
   closeLeadsModal: () => void;
   setActiveLeadIndex: (index: number) => void;
-  addChatMessage: (content: string) => void;
+  // Pulse multi-channel & multi-week state
+  pulseChannels: PulseChannel[];
+  pulseWeeks: PulseWeek[];
+  activePulseChannelId: string;
+  setActivePulseChannelId: (channelId: string) => void;
+  activePulseWeekId: string;
+  setActivePulseWeekId: (weekId: string) => void;
+  addChatMessage: (content: string, channelId?: string, weekId?: string) => void;
+  deleteChatMessage: (id: string) => void;
+  editChatMessage: (id: string, newContent: string) => void;
   confirmPinnedDecision: () => void;
   reschedulePinnedDecision: () => void;
+  // Notifications state
+  notifications: ShiftNotification[];
+  isNotificationsOpen: boolean;
+  setIsNotificationsOpen: (open: boolean) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  dismissNotification: (id: string) => void;
+  // Profile & Status Menu
+  isProfileMenuOpen: boolean;
+  setIsProfileMenuOpen: (open: boolean) => void;
+  // Leaderboard Modal
+  isLeaderboardOpen: boolean;
+  setIsLeaderboardOpen: (open: boolean) => void;
+  // Quick Search / Command Palette
+  isQuickSearchOpen: boolean;
+  setIsQuickSearchOpen: (open: boolean) => void;
+  // Create Lead Modal
+  isCreateLeadModalOpen: boolean;
+  setIsCreateLeadModalOpen: (open: boolean) => void;
+  // Create Calendar Event Modal
+  isCreateEventModalOpen: boolean;
+  setIsCreateEventModalOpen: (open: boolean) => void;
+  // AvaniBot Daily Brief Modal
+  isDailyBriefModalOpen: boolean;
+  setIsDailyBriefModalOpen: (open: boolean) => void;
+  // SOP Call Review
   selectedCallReview: RecentCall | null;
   setSelectedCallReview: (call: RecentCall | null) => void;
   resolveMissedCall: (id: string) => void;
@@ -65,14 +109,42 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('dashboard');
   const [isPlanSubmenuOpen, setIsPlanSubmenuOpen] = useState<boolean>(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
-  const [agent] = useState<AgentProfile>(mockAgent);
+  const [agent, setAgent] = useState<AgentProfile>(mockAgent);
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>(mockMissedCalls);
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>(mockRecentCalls);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(mockCalendarEvents);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
   const [pinnedDecision, setPinnedDecision] = useState<PinnedDecision>(mockPinnedDecision);
-  
+
+  // Pulse Channels & Weeks
+  const [pulseChannels] = useState<PulseChannel[]>(mockPulseChannels);
+  const [pulseWeeks] = useState<PulseWeek[]>(mockPulseWeeks);
+  const [activePulseChannelId, setActivePulseChannelId] = useState<string>('callcentre-team');
+  const [activePulseWeekId, setActivePulseWeekId] = useState<string>('w41');
+
+  // Notifications
+  const [notifications, setNotifications] = useState<ShiftNotification[]>(mockNotifications);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
+
+  // Profile & Status Menu
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
+
+  // Leaderboard Modal
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
+
+  // Quick Search / Command Palette
+  const [isQuickSearchOpen, setIsQuickSearchOpen] = useState<boolean>(false);
+
+  // Create Lead Modal
+  const [isCreateLeadModalOpen, setIsCreateLeadModalOpen] = useState<boolean>(false);
+
+  // Create Calendar Event Modal
+  const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState<boolean>(false);
+
+  // AvaniBot Daily Brief Modal
+  const [isDailyBriefModalOpen, setIsDailyBriefModalOpen] = useState<boolean>(false);
+
   // Leads Modal
   const [isLeadsModalOpen, setIsLeadsModalOpen] = useState<boolean>(false);
   const [activeLeadIndex, setActiveLeadIndex] = useState<number>(0);
@@ -83,6 +155,43 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Customer Callback Modal
   const [callbackCustomer, setCallbackCustomer] = useState<MissedCall | null>(null);
   const [isCallbackModalOpen, setIsCallbackModalOpen] = useState<boolean>(false);
+
+  const updateAgentQueueStatus = (status: 'On Queue' | 'Paused' | 'Break') => {
+    setAgent((prev) => ({
+      ...prev,
+      queueStatus: status
+    }));
+  };
+
+  const addNewLead = (newLeadData: Omit<Lead, 'id'>) => {
+    const newLead: Lead = {
+      ...newLeadData,
+      id: `lead-${Date.now()}`
+    };
+    setLeads((prev) => [newLead, ...prev]);
+  };
+
+  const addNewCalendarEvent = (newEventData: Omit<CalendarEvent, 'id'>) => {
+    const newEvent: CalendarEvent = {
+      ...newEventData,
+      id: `ev-${Date.now()}`
+    };
+    setCalendarEvents((prev) => [...prev, newEvent]);
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
 
   const openCallbackModal = (customer: MissedCall) => {
     setCallbackCustomer(customer);
@@ -103,18 +212,35 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsLeadsModalOpen(false);
   };
 
-  const addChatMessage = (content: string) => {
+  const addChatMessage = (content: string, channelId?: string, weekId?: string) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+    const targetChannel = channelId || activePulseChannelId;
+    const targetWeek = weekId || activePulseWeekId;
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
+      channelId: targetChannel,
+      weekId: targetWeek,
       sender: 'Arvind Rajan',
       initials: 'You',
+      senderRole: 'agent',
       timestamp: timeStr,
       content,
       isAgent: true
     };
     setChatMessages((prev) => [...prev, newMsg]);
+  };
+
+  const deleteChatMessage = (id: string) => {
+    setChatMessages((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const editChatMessage = (id: string, newContent: string) => {
+    setChatMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, content: newContent, edited: true } : m
+      )
+    );
   };
 
   const confirmPinnedDecision = () => {
@@ -123,7 +249,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'CONFIRMED',
       confirmedBy: 'Arvind Rajan'
     }));
-    addChatMessage('I have confirmed the 4:30pm callback with Priya Iyer.');
+    addChatMessage('I have confirmed the 4:30pm callback with Priya Iyer.', 'callcentre-team', 'w41');
   };
 
   const reschedulePinnedDecision = () => {
@@ -132,7 +258,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: 'RESCHEDULED',
       confirmedBy: 'Arvind Rajan'
     }));
-    addChatMessage('Requested reschedule for Priya Iyer callback to 5:15pm.');
+    addChatMessage('Requested reschedule for Priya Iyer callback to 5:15pm.', 'callcentre-team', 'w41');
   };
 
   const resolveMissedCall = (id: string) => {
@@ -205,7 +331,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setCalendarEvents((prev) => [...prev, newEvent]);
 
-    addChatMessage(`Logged callback request for ${payload.customerName} (${payload.preferredTime}).`);
+    addChatMessage(`Logged callback request for ${payload.customerName} (${payload.preferredTime}).`, 'callcentre-team', 'w41');
   };
 
   const recordCallInteraction = (call: RecentCall) => {
@@ -231,10 +357,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isMobileNavOpen,
         setIsMobileNavOpen,
         agent,
+        updateAgentQueueStatus,
         leads,
+        addNewLead,
         missedCalls,
         recentCalls,
         calendarEvents,
+        addNewCalendarEvent,
         chatMessages,
         pinnedDecision,
         isLeadsModalOpen,
@@ -242,9 +371,43 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         openLeadsModal,
         closeLeadsModal,
         setActiveLeadIndex,
+        // Pulse multi-channel & multi-week
+        pulseChannels,
+        pulseWeeks,
+        activePulseChannelId,
+        setActivePulseChannelId,
+        activePulseWeekId,
+        setActivePulseWeekId,
         addChatMessage,
+        deleteChatMessage,
+        editChatMessage,
         confirmPinnedDecision,
         reschedulePinnedDecision,
+        // Notifications
+        notifications,
+        isNotificationsOpen,
+        setIsNotificationsOpen,
+        markNotificationRead,
+        markAllNotificationsRead,
+        dismissNotification,
+        // Profile & Status
+        isProfileMenuOpen,
+        setIsProfileMenuOpen,
+        // Leaderboard
+        isLeaderboardOpen,
+        setIsLeaderboardOpen,
+        // Quick Search
+        isQuickSearchOpen,
+        setIsQuickSearchOpen,
+        // Creation Modals
+        isCreateLeadModalOpen,
+        setIsCreateLeadModalOpen,
+        isCreateEventModalOpen,
+        setIsCreateEventModalOpen,
+        // Daily Brief Modal
+        isDailyBriefModalOpen,
+        setIsDailyBriefModalOpen,
+        // Call review & callbacks
         selectedCallReview,
         setSelectedCallReview,
         resolveMissedCall,
@@ -268,3 +431,4 @@ export const useAppState = (): AppStateContextType => {
   }
   return context;
 };
+

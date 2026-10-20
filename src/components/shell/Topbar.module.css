@@ -1,4 +1,5 @@
 .topbar {
+  position: relative;
   height: calc(var(--topbar-height) + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -19,6 +20,42 @@
   align-items: center;
   gap: 10px;
 }
+
+.searchTriggerBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.15s ease;
+}
+
+.searchTriggerBtn:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.searchTriggerText {
+  color: #cbd5e1;
+}
+
+.searchKbd {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  background-color: rgba(0, 0, 0, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 
 .hamburgerBtn {
   display: none;
@@ -88,6 +125,23 @@
   opacity: 0.9;
 }
 
+.notifBadgeCount {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: #ffffff;
+  color: #ef4444;
+  font-size: 10px;
+  font-weight: 800;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
 .badgePill {
   display: flex;
   align-items: center;
@@ -100,6 +154,12 @@
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.1);
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.badgePill:hover {
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 .starPill {
@@ -114,6 +174,12 @@
   color: #f59e0b;
   border: 1px solid rgba(255, 255, 255, 0.1);
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.starPill:hover {
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 .avatar {
@@ -130,7 +196,14 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease;
 }
+
+.avatar:hover {
+  transform: scale(1.05);
+}
+
 
 .queuePill {
   display: flex;

@@ -9,7 +9,10 @@ import {
   X,
   Play,
   CheckCircle2,
-  FileText
+  FileText,
+  Plus,
+  Search,
+  Check
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
@@ -27,18 +30,56 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
     openLeadsModal,
     selectedCallReview,
     setSelectedCallReview,
-    openCallbackModal
+    openCallbackModal,
+    setIsCreateLeadModalOpen
   } = useAppState();
 
   const { startCall } = useCalling();
   const [activeTab, setActiveTab] = useState<'calls' | 'incoming' | 'recent'>(defaultSubTab);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+  const [isSopApproved, setIsSopApproved] = useState<boolean>(false);
 
-  // Pagination for Calls to Make (2 records per page)
+  // Search & filter states
+  const [leadSearch, setLeadSearch] = useState<string>('');
+  const [leadFilter, setLeadFilter] = useState<'all' | 'high-icp' | 'high-intent'>('all');
+  const [incomingSearch, setIncomingSearch] = useState<string>('');
+  const [recentSearch, setRecentSearch] = useState<string>('');
+  const [recentTypeFilter, setRecentTypeFilter] = useState<'all' | 'inbound' | 'outbound' | 'missed'>('all');
+
+  // Filtered Leads
+  const filteredLeads = leads.filter((lead) => {
+    const matchesSearch =
+      lead.name.toLowerCase().includes(leadSearch.toLowerCase()) ||
+      lead.phone.includes(leadSearch) ||
+      lead.product.toLowerCase().includes(leadSearch.toLowerCase());
+    if (!matchesSearch) return false;
+    if (leadFilter === 'high-icp') return lead.icpScore >= 80;
+    if (leadFilter === 'high-intent') return lead.intentScore >= 85;
+    return true;
+  });
+
+  // Pagination for filtered leads (2 records per page)
   const pageSize = 2;
-  const totalPages = Math.ceil(leads.length / pageSize) || 3;
-  const paginatedLeads = leads.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLeads = filteredLeads.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+  // Filtered Incoming calls
+  const filteredIncoming = missedCalls.filter((call) =>
+    call.name.toLowerCase().includes(incomingSearch.toLowerCase()) ||
+    call.phone.includes(incomingSearch)
+  );
+
+  // Filtered Recent calls
+  const filteredRecent = recentCalls.filter((call) => {
+    const matchesSearch =
+      call.name.toLowerCase().includes(recentSearch.toLowerCase()) ||
+      (call.phone && call.phone.includes(recentSearch));
+    if (!matchesSearch) return false;
+    if (recentTypeFilter !== 'all' && call.type !== recentTypeFilter) return false;
+    return true;
+  });
 
   const handleCallbackClick = (call: (typeof missedCalls)[0]) => {
     openCallbackModal(call);
@@ -46,6 +87,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
 
   const handleRecentCallClick = (call: RecentCall) => {
     setSelectedCallReview(call);
+    setIsSopApproved(false);
   };
 
   // Compute total value at stake
@@ -89,72 +131,127 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
         {/* VIEW 1: Calls to Make */}
         {activeTab === 'calls' && (
           <>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle}>Planned outgoing calls</h2>
-              <p className={styles.sectionSubtitle}>
-                Ranked by lead attractiveness score — tap a lead for the full picture
-              </p>
+            <div className={styles.actionHeaderRow}>
+              <div className={styles.sectionHeader}>
+                <h2 className={styles.sectionTitle}>Planned outgoing calls</h2>
+                <p className={styles.sectionSubtitle}>
+                  Ranked by lead attractiveness score — tap a lead for the full picture
+                </p>
+              </div>
+              <button
+                className={styles.newLeadBtn}
+                onClick={() => setIsCreateLeadModalOpen(true)}
+                title="Add a new lead to today's queue"
+              >
+                <Plus size={15} />
+                <span>+ New Lead</span>
+              </button>
             </div>
 
-            <div className={styles.listCard}>
-              {paginatedLeads.map((lead, index) => {
-                const leadGlobalIndex = (currentPage - 1) * pageSize + index;
-                return (
-                  <div
-                    key={lead.id}
-                    className={styles.listItem}
-                    onClick={() => openLeadsModal(leadGlobalIndex)}
-                    style={{ cursor: 'pointer' }}
+            {/* Filter & Search Bar */}
+            <div className={styles.filterControlsRow}>
+              <div className={styles.searchBox}>
+                <Search size={14} className={styles.searchIcon} />
+                <input
+                  type="text"
+                  placeholder="Filter leads by name, phone, product..."
+                  value={leadSearch}
+                  onChange={(e) => {
+                    setLeadSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className={styles.searchInput}
+                />
+              </div>
+              <div className={styles.pillsRow}>
+                <button
+                  className={`${styles.filterPill} ${leadFilter === 'all' ? styles.filterPillActive : ''}`}
+                  onClick={() => { setLeadFilter('all'); setCurrentPage(1); }}
+                >
+                  All ({leads.length})
+                </button>
+                <button
+                  className={`${styles.filterPill} ${leadFilter === 'high-icp' ? styles.filterPillActive : ''}`}
+                  onClick={() => { setLeadFilter('high-icp'); setCurrentPage(1); }}
+                >
+                  ICP ≥ 80%
+                </button>
+                <button
+                  className={`${styles.filterPill} ${leadFilter === 'high-intent' ? styles.filterPillActive : ''}`}
+                  onClick={() => { setLeadFilter('high-intent'); setCurrentPage(1); }}
+                >
+                  Intent ≥ 85
+                </button>
+              </div>
+            </div>
+
+            {filteredLeads.length === 0 ? (
+              <div className={styles.emptyStateMessage}>
+                No leads match &ldquo;{leadSearch}&rdquo;. Try another filter or create a new lead above.
+              </div>
+            ) : (
+              <>
+                <div className={styles.listCard}>
+                  {paginatedLeads.map((lead) => {
+                    const leadGlobalIndex = leads.findIndex((l) => l.id === lead.id);
+                    return (
+                      <div
+                        key={lead.id}
+                        className={styles.listItem}
+                        onClick={() => openLeadsModal(leadGlobalIndex >= 0 ? leadGlobalIndex : 0)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className={styles.itemLeft}>
+                          <div className={`${styles.avatarCircle} ${leadGlobalIndex % 2 === 1 ? styles.avatarGreen : ''}`}>
+                            {lead.initials}
+                          </div>
+                          <div className={styles.itemInfo}>
+                            <div className={styles.itemNameRow}>
+                              <span className={styles.itemName}>{lead.name}</span>
+                              <span className={styles.itemPhone}>{lead.phone}</span>
+                              <ClickToCallButton phone={lead.phone} customerName={lead.name} size="sm" />
+                            </div>
+                            <div className={styles.itemDetail}>
+                              Interested: {lead.product} · ₹{lead.price.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={styles.itemRight}>
+                          <div className={styles.scoreBadge}>
+                            <span className={styles.scoreNumber}>{lead.attractivenessScore}</span>
+                            <span className={styles.scoreText}>SCORE</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Pagination Controls */}
+                <div className={styles.paginationRow}>
+                  <button
+                    className={styles.pageBtn}
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    title="Previous Page"
                   >
-                    <div className={styles.itemLeft}>
-                      <div className={`${styles.avatarCircle} ${leadGlobalIndex % 2 === 1 ? styles.avatarGreen : ''}`}>
-                        {lead.initials}
-                      </div>
-                      <div className={styles.itemInfo}>
-                        <div className={styles.itemNameRow}>
-                          <span className={styles.itemName}>{lead.name}</span>
-                          <span className={styles.itemPhone}>{lead.phone}</span>
-                          <ClickToCallButton phone={lead.phone} customerName={lead.name} size="sm" />
-                        </div>
-                        <div className={styles.itemDetail}>
-                          Interested: {lead.product} · ₹{lead.price.toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={styles.itemRight}>
-                      <div className={styles.scoreBadge}>
-                        <span className={styles.scoreNumber}>{lead.attractivenessScore}</span>
-                        <span className={styles.scoreText}>SCORE</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Pagination Controls */}
-            <div className={styles.paginationRow}>
-              <button
-                className={styles.pageBtn}
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                title="Previous Page"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className={styles.pageText}>
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                className={styles.pageBtn}
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                title="Next Page"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className={styles.pageText}>
+                    Page {safeCurrentPage} of {totalPages}
+                  </span>
+                  <button
+                    className={styles.pageBtn}
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    title="Next Page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -182,64 +279,84 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
               </div>
             </div>
 
-            <div className={styles.listCard}>
-              {missedCalls.map((call) => (
-                <div key={call.id} className={styles.listItem}>
-                  <div className={styles.itemLeft}>
-                    <div className={`${styles.iconCircle} ${styles.iconMissed}`}>
-                      <PhoneMissed size={18} />
-                    </div>
-                    <div className={styles.itemInfo}>
-                      <div className={styles.itemNameRow}>
-                        <span className={styles.itemName}>{call.name}</span>
-                        <span className={styles.itemPhone}>{call.phone}</span>
-                        <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
-                      </div>
-                      <div className={styles.itemDetail}>{call.missedText}</div>
-                    </div>
-                  </div>
-
-                  <div className={styles.itemRight}>
-                    <div className={styles.valueTag}>
-                      {call.expectedValue > 0 ? (
-                        <>
-                          ₹{call.expectedValue.toLocaleString()}
-                          <span className={styles.valueLabel}>expected value</span>
-                        </>
-                      ) : (
-                        <span style={{ color: '#64748b', fontSize: '13px' }}>New contact</span>
-                      )}
-                    </div>
-
-                    {call.isResolved && (
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          color: '#059669',
-                          backgroundColor: '#ecfdf5',
-                          border: '1px solid #a7f3d0',
-                          padding: '3px 8px',
-                          borderRadius: '9999px',
-                          marginRight: '8px'
-                        }}
-                      >
-                        {call.tag && call.tag.includes('Callback Requested') ? 'Callback Scheduled' : 'Callback Handled'}
-                      </span>
-                    )}
-
-                    <button
-                      className={styles.callbackBtn}
-                      onClick={() => handleCallbackClick(call)}
-                      title={`Call back ${call.name}`}
-                    >
-                      <PhoneCall size={14} />
-                      <span>Call back</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+            {/* Incoming Search Bar */}
+            <div className={styles.filterControlsRow}>
+              <div className={styles.searchBox}>
+                <Search size={14} className={styles.searchIcon} />
+                <input
+                  type="text"
+                  placeholder="Filter missed calls by caller name or phone..."
+                  value={incomingSearch}
+                  onChange={(e) => setIncomingSearch(e.target.value)}
+                  className={styles.searchInput}
+                />
+              </div>
             </div>
+
+            {filteredIncoming.length === 0 ? (
+              <div className={styles.emptyStateMessage}>
+                No missed calls match &ldquo;{incomingSearch}&rdquo;.
+              </div>
+            ) : (
+              <div className={styles.listCard}>
+                {filteredIncoming.map((call) => (
+                  <div key={call.id} className={styles.listItem}>
+                    <div className={styles.itemLeft}>
+                      <div className={`${styles.iconCircle} ${styles.iconMissed}`}>
+                        <PhoneMissed size={18} />
+                      </div>
+                      <div className={styles.itemInfo}>
+                        <div className={styles.itemNameRow}>
+                          <span className={styles.itemName}>{call.name}</span>
+                          <span className={styles.itemPhone}>{call.phone}</span>
+                          <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
+                        </div>
+                        <div className={styles.itemDetail}>{call.missedText}</div>
+                      </div>
+                    </div>
+
+                    <div className={styles.itemRight}>
+                      <div className={styles.valueTag}>
+                        {call.expectedValue > 0 ? (
+                          <>
+                            ₹{call.expectedValue.toLocaleString()}
+                            <span className={styles.valueLabel}>expected value</span>
+                          </>
+                        ) : (
+                          <span style={{ color: '#64748b', fontSize: '13px' }}>New contact</span>
+                        )}
+                      </div>
+
+                      {call.isResolved && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: '#059669',
+                            backgroundColor: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
+                            padding: '3px 8px',
+                            borderRadius: '9999px',
+                            marginRight: '8px'
+                          }}
+                        >
+                          {call.tag && call.tag.includes('Callback Requested') ? 'Callback Scheduled' : 'Callback Handled'}
+                        </span>
+                      )}
+
+                      <button
+                        className={styles.callbackBtn}
+                        onClick={() => handleCallbackClick(call)}
+                        title={`Call back ${call.name}`}
+                      >
+                        <PhoneCall size={14} />
+                        <span>Call back</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -251,67 +368,113 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
               <p className={styles.sectionSubtitle}>Tap a call to review it against SOP</p>
             </div>
 
-            <div className={styles.listCard}>
-              {recentCalls.map((call) => (
-                <div
-                  key={call.id}
-                  className={styles.listItem}
-                  onClick={() => handleRecentCallClick(call)}
-                  style={{ cursor: 'pointer' }}
+            {/* Filter & Search Bar */}
+            <div className={styles.filterControlsRow}>
+              <div className={styles.searchBox}>
+                <Search size={14} className={styles.searchIcon} />
+                <input
+                  type="text"
+                  placeholder="Filter recent calls by name or phone..."
+                  value={recentSearch}
+                  onChange={(e) => setRecentSearch(e.target.value)}
+                  className={styles.searchInput}
+                />
+              </div>
+              <div className={styles.pillsRow}>
+                <button
+                  className={`${styles.filterPill} ${recentTypeFilter === 'all' ? styles.filterPillActive : ''}`}
+                  onClick={() => setRecentTypeFilter('all')}
                 >
-                  <div className={styles.itemLeft}>
-                    <div
-                      className={`${styles.iconCircle} ${
-                        call.type === 'inbound'
-                          ? styles.iconInbound
-                          : call.type === 'outbound'
-                          ? styles.iconOutbound
-                          : styles.iconMissed
-                      }`}
-                    >
-                      {call.type === 'inbound' && <PhoneIncoming size={18} />}
-                      {call.type === 'outbound' && <PhoneOutgoing size={18} />}
-                      {call.type === 'missed' && <PhoneMissed size={18} />}
-                    </div>
-
-                    <div className={styles.itemInfo}>
-                      <div className={styles.itemNameRow}>
-                        <span className={styles.itemName}>{call.name}</span>
-                        {call.phone ? (
-                          <>
-                            <span className={styles.itemPhone}>{call.phone}</span>
-                            <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
-                          </>
-                        ) : (
-                          <ClickToCallButton phone={null} customerName={call.name} size="sm" />
-                        )}
-                      </div>
-                      <div className={styles.itemDetail}>
-                        {call.timeText}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={styles.itemRight}>
-                    {call.sopScore && call.sopScore > 0 && (
-                      <span
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: '#047857',
-                          backgroundColor: '#ecfdf5',
-                          padding: '3px 8px',
-                          borderRadius: '6px'
-                        }}
-                      >
-                        SOP: {call.sopScore}%
-                      </span>
-                    )}
-                    <ChevronRight size={16} color="#94a3b8" />
-                  </div>
-                </div>
-              ))}
+                  All ({recentCalls.length})
+                </button>
+                <button
+                  className={`${styles.filterPill} ${recentTypeFilter === 'inbound' ? styles.filterPillActive : ''}`}
+                  onClick={() => setRecentTypeFilter('inbound')}
+                >
+                  Inbound
+                </button>
+                <button
+                  className={`${styles.filterPill} ${recentTypeFilter === 'outbound' ? styles.filterPillActive : ''}`}
+                  onClick={() => setRecentTypeFilter('outbound')}
+                >
+                  Outbound
+                </button>
+                <button
+                  className={`${styles.filterPill} ${recentTypeFilter === 'missed' ? styles.filterPillActive : ''}`}
+                  onClick={() => setRecentTypeFilter('missed')}
+                >
+                  Missed
+                </button>
+              </div>
             </div>
+
+            {filteredRecent.length === 0 ? (
+              <div className={styles.emptyStateMessage}>
+                No recent calls match your search.
+              </div>
+            ) : (
+              <div className={styles.listCard}>
+                {filteredRecent.map((call) => (
+                  <div
+                    key={call.id}
+                    className={styles.listItem}
+                    onClick={() => handleRecentCallClick(call)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className={styles.itemLeft}>
+                      <div
+                        className={`${styles.iconCircle} ${
+                          call.type === 'inbound'
+                            ? styles.iconInbound
+                            : call.type === 'outbound'
+                            ? styles.iconOutbound
+                            : styles.iconMissed
+                        }`}
+                      >
+                        {call.type === 'inbound' && <PhoneIncoming size={18} />}
+                        {call.type === 'outbound' && <PhoneOutgoing size={18} />}
+                        {call.type === 'missed' && <PhoneMissed size={18} />}
+                      </div>
+
+                      <div className={styles.itemInfo}>
+                        <div className={styles.itemNameRow}>
+                          <span className={styles.itemName}>{call.name}</span>
+                          {call.phone ? (
+                            <>
+                              <span className={styles.itemPhone}>{call.phone}</span>
+                              <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
+                            </>
+                          ) : (
+                            <ClickToCallButton phone={null} customerName={call.name} size="sm" />
+                          )}
+                        </div>
+                        <div className={styles.itemDetail}>
+                          {call.timeText}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={styles.itemRight}>
+                      {call.sopScore && call.sopScore > 0 && (
+                        <span
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            color: '#047857',
+                            backgroundColor: '#ecfdf5',
+                            padding: '3px 8px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          SOP: {call.sopScore}%
+                        </span>
+                      )}
+                      <ChevronRight size={16} color="#94a3b8" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -434,31 +597,55 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
               </div>
 
               {/* Action Buttons */}
-              <div className={styles.drawerActions}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
                 <button
-                  className={styles.callbackBtn}
-                  style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={() => {
-                    const phoneToCall = selectedCallReview.phone || '+91 72041 04491';
-                    setSelectedCallReview(null);
-                    startCall({
-                      name: selectedCallReview.name,
-                      phone: phoneToCall,
-                      mode: 'AI_VOICE'
-                    });
+                  style={{
+                    backgroundColor: isSopApproved ? '#ecfdf5' : '#f8fafc',
+                    color: isSopApproved ? '#047857' : '#334155',
+                    border: isSopApproved ? '1px solid #a7f3d0' : '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
                   }}
-                  title={`Call ${selectedCallReview.name} with AI voice assistant`}
+                  onClick={() => setIsSopApproved(!isSopApproved)}
                 >
-                  <PhoneCall size={14} />
-                  <span>Call {selectedCallReview.name} (In-App)</span>
+                  <Check size={15} color={isSopApproved ? '#047857' : '#64748b'} />
+                  <span>{isSopApproved ? '✓ QA / SOP Check Passed & Logged' : 'Mark SOP Audit Complete'}</span>
                 </button>
-                <ClickToCallButton
-                  phone={selectedCallReview.phone}
-                  customerName={selectedCallReview.name}
-                  variant="pill"
-                  showNumber
-                  size="md"
-                />
+
+                <div className={styles.drawerActions}>
+                  <button
+                    className={styles.callbackBtn}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => {
+                      const phoneToCall = selectedCallReview.phone || '+91 72041 04491';
+                      setSelectedCallReview(null);
+                      startCall({
+                        name: selectedCallReview.name,
+                        phone: phoneToCall,
+                        mode: 'AI_VOICE'
+                      });
+                    }}
+                    title={`Call ${selectedCallReview.name} with AI voice assistant`}
+                  >
+                    <PhoneCall size={14} />
+                    <span>Call {selectedCallReview.name} (In-App)</span>
+                  </button>
+                  <ClickToCallButton
+                    phone={selectedCallReview.phone}
+                    customerName={selectedCallReview.name}
+                    variant="pill"
+                    showNumber
+                    size="md"
+                  />
+                </div>
               </div>
             </div>
           </div>

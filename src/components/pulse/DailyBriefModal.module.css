@@ -1,0 +1,245 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  width: 540px;
+  max-width: 100%;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  animation: slideUp 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  color: #ffffff;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sparkleIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #e9d5ff;
+  margin-top: 2px;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: #e9d5ff;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeBtn:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.body {
+  padding: 20px;
+  max-height: calc(85vh - 130px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.summaryCard {
+  background-color: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.summaryText {
+  font-size: 13px;
+  color: #581c87;
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 500;
+}
+
+.itemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.briefItem {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.itemIconCircle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.itemContent {
+  flex: 1;
+}
+
+.itemHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.badgeUrgent {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.badgeAmber {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #b45309;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.badgeGreen {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #047857;
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.itemDesc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 4px 0 8px 0;
+  line-height: 1.4;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7c3aed;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.actionBtn:hover {
+  text-decoration: underline;
+}
+
+.kudosBox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+}
+
+.footer {
+  padding: 14px 20px;
+  background-color: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.closeMainBtn {
+  padding: 8px 20px;
+  background-color: #7c3aed;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(124, 58, 237, 0.3);
+}
+
+.closeMainBtn:hover {
+  background-color: #6d28d9;
+}

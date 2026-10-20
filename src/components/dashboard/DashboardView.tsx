@@ -11,7 +11,15 @@ import { ClickToCallButton } from '../common/ClickToCallButton';
 import styles from './DashboardView.module.css';
 
 export const DashboardView: React.FC = () => {
-  const { agent, setCurrentRoute, openLeadsModal, setSelectedCallReview, recentCalls } = useAppState();
+  const {
+    agent,
+    setCurrentRoute,
+    openLeadsModal,
+    setSelectedCallReview,
+    recentCalls,
+    setIsCreateLeadModalOpen,
+    setIsLeaderboardOpen
+  } = useAppState();
 
   const handleOpenPlanner = () => {
     setCurrentRoute('plan/calls');
@@ -58,7 +66,12 @@ export const DashboardView: React.FC = () => {
 
         <div className={styles.kpiGrid}>
           {/* Card 1: OG Score */}
-          <div className={styles.kpiCard}>
+          <div
+            className={styles.kpiCard}
+            onClick={() => setIsLeaderboardOpen(true)}
+            style={{ cursor: 'pointer' }}
+            title="View OG Score Hub Leaderboard"
+          >
             <div className={styles.kpiValue}>76</div>
             <div className={styles.kpiTitle}>OG SCORE™</div>
             <div className={styles.kpiDeltaGreen}>
@@ -68,7 +81,12 @@ export const DashboardView: React.FC = () => {
           </div>
 
           {/* Card 2: Avg Handle Time */}
-          <div className={styles.kpiCard}>
+          <div
+            className={styles.kpiCard}
+            onClick={() => setCurrentRoute('plan/recent')}
+            style={{ cursor: 'pointer' }}
+            title="View Recent Calls & Handle Time"
+          >
             <div className={styles.kpiValue}>4m 12s</div>
             <div className={styles.kpiTitle}>AVG HANDLE TIME</div>
             <div className={styles.kpiDeltaGreen}>
@@ -78,7 +96,12 @@ export const DashboardView: React.FC = () => {
           </div>
 
           {/* Card 3: CSAT Today */}
-          <div className={styles.kpiCard}>
+          <div
+            className={styles.kpiCard}
+            onClick={() => setCurrentRoute('plan/recent')}
+            style={{ cursor: 'pointer' }}
+            title="View CSAT & SOP Quality Reviews"
+          >
             <div className={styles.kpiValue}>94%</div>
             <div className={styles.kpiTitle}>CSAT TODAY</div>
             <div className={styles.kpiDeltaGreen}>
@@ -88,7 +111,12 @@ export const DashboardView: React.FC = () => {
           </div>
 
           {/* Card 4: In Queue */}
-          <div className={styles.kpiCard}>
+          <div
+            className={styles.kpiCard}
+            onClick={() => setCurrentRoute('plan/calls')}
+            style={{ cursor: 'pointer' }}
+            title="Open Calling Plan Queue"
+          >
             <div className={styles.kpiValue}>2</div>
             <div className={styles.kpiTitle}>IN QUEUE</div>
             <div className={styles.livePill}>
@@ -110,12 +138,22 @@ export const DashboardView: React.FC = () => {
               <span>MY PROGRESS · TODAY</span>
             </div>
             <div className={styles.progressMetricsRow}>
-              <div className={styles.progressItem}>
+              <div
+                className={styles.progressItem}
+                onClick={() => setIsCreateLeadModalOpen(true)}
+                style={{ cursor: 'pointer' }}
+                title="Create a new lead"
+              >
                 <div className={styles.progressNum}>3</div>
                 <div className={styles.progressDelta}>▲ +1</div>
                 <div className={styles.progressName}>Leads Created</div>
               </div>
-              <div className={styles.progressItem}>
+              <div
+                className={styles.progressItem}
+                onClick={() => setCurrentRoute('plan/calls')}
+                style={{ cursor: 'pointer' }}
+                title="View planned calls"
+              >
                 <div className={styles.progressNum}>2</div>
                 <div className={styles.progressDelta}>▲ +2</div>
                 <div className={styles.progressName}>Leads Called</div>

@@ -5,7 +5,10 @@ import {
   RecentCall,
   CalendarEvent,
   ChatMessage,
-  PinnedDecision
+  PinnedDecision,
+  PulseChannel,
+  PulseWeek,
+  ShiftNotification
 } from '../types';
 
 export const mockAgent: AgentProfile = {
@@ -333,45 +336,406 @@ export const mockPinnedDecision: PinnedDecision = {
   status: 'PENDING'
 };
 
+export const mockPulseWeeks: PulseWeek[] = [
+  {
+    id: 'w41',
+    label: 'Oct 5 - Oct 11, 2026',
+    dateRange: 'Current Active Shift Week',
+    isCurrent: true
+  },
+  {
+    id: 'w40',
+    label: 'Sep 28 - Oct 4, 2026',
+    dateRange: 'Previous Shift Cycle',
+    isCurrent: false
+  },
+  {
+    id: 'w39',
+    label: 'Sep 21 - Sep 27, 2026',
+    dateRange: 'Shift Coaching Cycle',
+    isCurrent: false
+  }
+];
+
+export const mockPulseChannels: PulseChannel[] = [
+  {
+    id: 'callcentre-team',
+    name: '# callcentre-agent',
+    category: 'role',
+    categoryLabel: 'ROLE AGENTS · run a team',
+    topic: 'Call Centre Agent · Active team channel',
+    membersCount: 14,
+    unreadCount: 0,
+    iconType: 'users'
+  },
+  {
+    id: 'cross-sell-agent',
+    name: '# cross-sell-agent',
+    category: 'task',
+    categoryLabel: 'TASK AGENTS · move one metric',
+    topic: 'Your Attach rate · 5 members',
+    membersCount: 5,
+    unreadCount: 1,
+    iconType: 'zap',
+    metric: {
+      label: 'Attach rate',
+      value: 24,
+      color: '#c026d3'
+    }
+  },
+  {
+    id: 'sop-agent',
+    name: '# sop-agent',
+    category: 'task',
+    categoryLabel: 'TASK AGENTS · move one metric',
+    topic: 'Your SOP adherence · 5 members',
+    membersCount: 5,
+    unreadCount: 0,
+    iconType: 'target',
+    metric: {
+      label: 'SOP adherence',
+      value: 81,
+      color: '#059669'
+    }
+  },
+  {
+    id: 'lead-conversion-agent',
+    name: '# lead-conversion-agent',
+    category: 'task',
+    categoryLabel: 'TASK AGENTS · move one metric',
+    topic: 'Lead Conversion Agent · High-intent leads',
+    membersCount: 6,
+    unreadCount: 2,
+    iconType: 'target'
+  },
+  {
+    id: 'capture-agent',
+    name: '# capture-agent',
+    category: 'task',
+    categoryLabel: 'TASK AGENTS · move one metric',
+    topic: 'Your Capture coverage · 5 members',
+    membersCount: 5,
+    unreadCount: 0,
+    iconType: 'zap',
+    metric: {
+      label: 'Capture coverage',
+      value: 78,
+      color: '#16a34a'
+    }
+  },
+  {
+    id: 'customer-discussions',
+    name: 'customer-discussions',
+    category: 'general',
+    categoryLabel: 'GENERAL · channels',
+    topic: 'Relayed via WhatsApp Business',
+    membersCount: 8,
+    unreadCount: 1,
+    iconType: 'whatsapp'
+  }
+];
+
+export const mockNotifications: ShiftNotification[] = [
+  {
+    id: 'notif-1',
+    title: 'High-Value Missed Call',
+    description: 'Faizan A. (₹24,990) missed call on SmartGRID Ortho. Callback recommended.',
+    timestamp: '10m ago',
+    type: 'call',
+    read: false,
+    actionRoute: 'plan/incoming',
+    actionSubTab: 'incoming',
+    actionLabel: 'Call Back'
+  },
+  {
+    id: 'notif-2',
+    title: 'SOP Greeting QA Alert',
+    description: 'Greeting in first 10s dropped to 71%. Review team coaching notes.',
+    timestamp: '25m ago',
+    type: 'qa',
+    read: false,
+    actionRoute: 'pulse',
+    actionLabel: 'View Channel'
+  },
+  {
+    id: 'notif-3',
+    title: 'Hot Lead SLA Warning',
+    description: 'Mukunda (₹8,490 Ortho GRID) SLA expires in 2 hours.',
+    timestamp: '45m ago',
+    type: 'lead',
+    read: false,
+    actionRoute: 'plan/calls',
+    actionSubTab: 'calls',
+    actionLeadIndex: 0,
+    actionLabel: 'Open Lead'
+  },
+  {
+    id: 'notif-4',
+    title: 'Shift QA Sync Today',
+    description: 'Daily QA Check-in with Sunita Rao at 2:00 PM.',
+    timestamp: '1h ago',
+    type: 'calendar',
+    read: true,
+    actionRoute: 'calendar',
+    actionLabel: 'View Schedule'
+  }
+];
+
 export const mockChatMessages: ChatMessage[] = [
+  // --- CHANNEL: callcentre-team (Week 41: Current) ---
   {
     id: 'msg-1',
+    channelId: 'callcentre-team',
+    weekId: 'w41',
+    issueId: 'greeting-sop',
     sender: 'Sunita Rao',
     initials: 'SR',
+    senderRole: 'manager',
     timestamp: '2:05pm',
     content: '👥 STAKEHOLDERS: @You (Arvind R.), whole call centre shift',
     isAgent: false
   },
   {
     id: 'msg-2',
+    channelId: 'callcentre-team',
+    weekId: 'w41',
+    issueId: 'greeting-sop',
     sender: 'Sunita Rao',
     initials: 'SR',
+    senderRole: 'manager',
     timestamp: '2:05pm',
     content: '📋 ISSUE DEFINITION: Greeting-in-first-10s QA score is at 71% this week, below our 85% target.',
     isAgent: false
   },
   {
     id: 'msg-3',
+    channelId: 'callcentre-team',
+    weekId: 'w41',
+    issueId: 'greeting-sop',
     sender: 'Sunita Rao',
     initials: 'SR',
+    senderRole: 'manager',
     timestamp: '2:05pm',
     content: "➡️ SUGGESTED RESOLUTION: Let's push that up 💪 — open every call with the greeting script. I'll check back Friday.",
     isAgent: false
   },
   {
     id: 'msg-4',
+    channelId: 'callcentre-team',
+    weekId: 'w41',
+    issueId: 'greeting-sop',
     sender: 'Arvind Rajan',
     initials: 'You',
+    senderRole: 'agent',
     timestamp: '2:10pm',
     content: 'On it! Will make sure I open every call with the greeting script 🙌',
     isAgent: true
   },
   {
     id: 'msg-5',
+    channelId: 'callcentre-team',
+    weekId: 'w41',
+    issueId: 'greeting-sop',
     sender: 'Sunita Rao',
     initials: 'SR',
+    senderRole: 'manager',
     timestamp: '2:14pm',
     content: 'Great attitude Arvind 🌟',
     isAgent: false
+  },
+
+  // --- CHANNEL: callcentre-team (Week 40: Previous) ---
+  {
+    id: 'msg-w40-1',
+    channelId: 'callcentre-team',
+    weekId: 'w40',
+    issueId: 'weekly-wrap',
+    sender: 'Sunita Rao',
+    initials: 'SR',
+    senderRole: 'manager',
+    timestamp: 'Oct 3, 5:30pm',
+    content: '🎉 Week 40 Wrap-Up: Koramangala hub achieved 92% CSAT average across all inbound calls!',
+    isAgent: false
+  },
+  {
+    id: 'msg-w40-2',
+    channelId: 'callcentre-team',
+    weekId: 'w40',
+    issueId: 'weekly-wrap',
+    sender: 'Sunita Rao',
+    initials: 'SR',
+    senderRole: 'manager',
+    timestamp: 'Oct 3, 5:35pm',
+    content: 'Special shoutout to Arvind Rajan for handling 22 calls on Thursday with zero escalations.',
+    isAgent: false
+  },
+  {
+    id: 'msg-w40-3',
+    channelId: 'callcentre-team',
+    weekId: 'w40',
+    issueId: 'weekly-wrap',
+    sender: 'Arvind Rajan',
+    initials: 'You',
+    senderRole: 'agent',
+    timestamp: 'Oct 3, 5:40pm',
+    content: 'Thank you Sunita! The new objection playbook on 100-night trial made a huge difference.',
+    isAgent: true
+  },
+
+  // --- CHANNEL: callcentre-team (Week 39: Two Weeks Ago) ---
+  {
+    id: 'msg-w39-1',
+    channelId: 'callcentre-team',
+    weekId: 'w39',
+    issueId: 'q4-kickoff',
+    sender: 'Mukunda Dwarkanath',
+    initials: 'MD',
+    senderRole: 'manager',
+    timestamp: 'Sep 25, 10:00am',
+    content: '🚀 Q4 Shift Kickoff: Festive season demand starts next week. Expect higher Smart Luxe inquiries.',
+    isAgent: false
+  },
+  {
+    id: 'msg-w39-2',
+    channelId: 'callcentre-team',
+    weekId: 'w39',
+    issueId: 'q4-kickoff',
+    sender: 'Arvind Rajan',
+    initials: 'You',
+    senderRole: 'agent',
+    timestamp: 'Sep 25, 10:15am',
+    content: 'Will review the festive promotional pricing and 0% EMI tiers before calls start.',
+    isAgent: true
+  },
+
+  // --- CHANNEL: cross-sell-agent (Week 41) ---
+  {
+    id: 'msg-cs-1',
+    channelId: 'cross-sell-agent',
+    weekId: 'w41',
+    issueId: 'attach-metric',
+    sender: 'Attach Bot',
+    initials: 'AB',
+    senderRole: 'bot',
+    timestamp: '11:15am',
+    content: '📊 METRIC UPDATE: Current Attach Rate is 24% (Target: 30%). 3 deals closed without accessory attach today.',
+    isAgent: false
+  },
+  {
+    id: 'msg-cs-2',
+    channelId: 'cross-sell-agent',
+    weekId: 'w41',
+    issueId: 'attach-metric',
+    sender: 'Sunita Rao',
+    initials: 'SR',
+    senderRole: 'manager',
+    timestamp: '11:20am',
+    content: '@shift Remember that SmartGRID mattresses pair perfectly with All-Weather Bamboo Protectors. Offer the bundle discount!',
+    isAgent: false
+  },
+  {
+    id: 'msg-cs-3',
+    channelId: 'cross-sell-agent',
+    weekId: 'w41',
+    issueId: 'attach-metric',
+    sender: 'Arvind Rajan',
+    initials: 'You',
+    senderRole: 'agent',
+    timestamp: '11:45am',
+    content: 'Understood. I will pitch the Smart Ergonomic Pillow combo on the upcoming Faizan A. callback.',
+    isAgent: true
+  },
+
+  // --- CHANNEL: sop-agent (Week 41) ---
+  {
+    id: 'msg-sop-1',
+    channelId: 'sop-agent',
+    weekId: 'w41',
+    issueId: 'trial-disclosure',
+    sender: 'SOP Guardian',
+    initials: 'SG',
+    senderRole: 'bot',
+    timestamp: '9:30am',
+    content: '📋 QA SPOTLIGHT: 100-Night Risk-Free Trial disclosure adherence reached 81% across 18 audited calls.',
+    isAgent: false
+  },
+  {
+    id: 'msg-sop-2',
+    channelId: 'sop-agent',
+    weekId: 'w41',
+    issueId: 'trial-disclosure',
+    sender: 'Sunita Rao',
+    initials: 'SR',
+    senderRole: 'manager',
+    timestamp: '9:45am',
+    content: 'Be sure to explain that the 100-night trial requires zero return shipping fees for customers in Bengaluru.',
+    isAgent: false
+  },
+
+  // --- CHANNEL: lead-conversion-agent (Week 41) ---
+  {
+    id: 'msg-lead-1',
+    channelId: 'lead-conversion-agent',
+    weekId: 'w41',
+    issueId: 'hot-leads',
+    sender: 'Conversion AI',
+    initials: 'CA',
+    senderRole: 'bot',
+    timestamp: '1:00pm',
+    content: '🎯 HOT LEADS: Mukunda (Ortho GRID) and Ritu S. (Smart Luxe) have intent scores above 90. Call window recommended now.',
+    isAgent: false
+  },
+  {
+    id: 'msg-lead-2',
+    channelId: 'lead-conversion-agent',
+    weekId: 'w41',
+    issueId: 'hot-leads',
+    sender: 'Mukunda Dwarkanath',
+    initials: 'MD',
+    senderRole: 'manager',
+    timestamp: '1:10pm',
+    content: 'Mukunda visited the Koramangala store yesterday. Emphasize that in-store discounts can be matched immediately over the phone.',
+    isAgent: false
+  },
+
+  // --- CHANNEL: capture-agent (Week 41) ---
+  {
+    id: 'msg-cap-1',
+    channelId: 'capture-agent',
+    weekId: 'w41',
+    issueId: 'crm-capture',
+    sender: 'Capture Bot',
+    initials: 'CB',
+    senderRole: 'bot',
+    timestamp: '10:00am',
+    content: '📝 CAPTURE AUDIT: Capture coverage at 78%. Ensure delivery pin code is verified during the first 2 minutes of the call.',
+    isAgent: false
+  },
+
+  // --- CHANNEL: customer-discussions (Week 41) ---
+  {
+    id: 'msg-cust-1',
+    channelId: 'customer-discussions',
+    weekId: 'w41',
+    issueId: 'whatsapp-relay',
+    sender: 'WhatsApp Relay',
+    initials: 'WA',
+    senderRole: 'customer',
+    timestamp: '12:30pm',
+    content: '💬 Customer +91 98452 34567: "Hello, does the Koramangala store have the King Size Ortho GRID on display for a trial?"',
+    isAgent: false
+  },
+  {
+    id: 'msg-cust-2',
+    channelId: 'customer-discussions',
+    weekId: 'w41',
+    issueId: 'whatsapp-relay',
+    sender: 'Arvind Rajan',
+    initials: 'You',
+    senderRole: 'agent',
+    timestamp: '12:35pm',
+    content: 'Yes! Floor display is available in store and our warehouse has 14 units ready for immediate 24h dispatch.',
+    isAgent: true
   }
 ];
+

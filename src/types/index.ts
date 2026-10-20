@@ -79,12 +79,53 @@ export interface CalendarEvent {
 
 export interface ChatMessage {
   id: string;
+  channelId?: string;
+  weekId?: string;
+  issueId?: string;
   sender: string;
   initials: string;
   timestamp: string;
   content: string;
   isAgent: boolean;
   prefixBadge?: string;
+  senderRole?: 'manager' | 'agent' | 'bot' | 'customer';
+  edited?: boolean;
+}
+
+export interface PulseChannel {
+  id: string;
+  name: string;
+  category: 'role' | 'task' | 'general';
+  categoryLabel: string;
+  topic: string;
+  membersCount: number;
+  unreadCount: number;
+  iconType: 'users' | 'zap' | 'target' | 'whatsapp';
+  metric?: {
+    label: string;
+    value: number;
+    color: string;
+  };
+}
+
+export interface PulseWeek {
+  id: string;
+  label: string;
+  dateRange: string;
+  isCurrent: boolean;
+}
+
+export interface ShiftNotification {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  type: 'call' | 'qa' | 'lead' | 'calendar';
+  read: boolean;
+  actionRoute?: AppRoute;
+  actionSubTab?: 'calls' | 'incoming' | 'recent';
+  actionLeadIndex?: number;
+  actionLabel?: string;
 }
 
 export interface PinnedDecision {
@@ -112,3 +153,4 @@ export interface ActiveCallState {
   transcriptSnippet?: string;
   aiResponseText?: string;
 }
+
