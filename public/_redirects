@@ -1,0 +1,5 @@
+/api/gemini/token  /.netlify/functions/gemini-token  200
+/api/gemini/status /.netlify/functions/gemini-status 200
+/api/gemini/models /.netlify/functions/gemini-models 200
+/api/gemini/query  /.netlify/functions/gemini-query  200
+/*                 /index.html                       200

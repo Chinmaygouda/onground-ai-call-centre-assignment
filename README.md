@@ -48,7 +48,25 @@ pnpm run build
 # Preview production build locally
 pnpm run preview
 ```
-Production build compiles cleanly with zero TypeScript errors or warnings (`dist/` total bundle: 38 kB CSS, 234 kB JS gzipped to 70 kB).
+Production build compiles cleanly with zero TypeScript errors or warnings (`dist/` total bundle: ~127 kB CSS, ~438 kB JS gzipped to 127 kB).
+
+### Production Deployment (Netlify)
+The repository is fully pre-configured for one-click deployment on **Netlify**:
+- **Build command**: `pnpm run build`
+- **Publish directory**: `dist`
+- **Functions directory**: `netlify/functions`
+- **Configuration file**: `netlify.toml` (and `public/_redirects`) handles SPA route fallback (`/* -> /index.html 200`) and proxies API requests (`/api/gemini/* -> /.netlify/functions/gemini-* 200`).
+
+#### Netlify Environment Variables
+Set the following in **Site settings > Environment variables** in your Netlify dashboard:
+- `GEMINI_API_KEY`: *(Required for live AI voice)* Your Google AI Studio API key. Server-side only; never leaked to frontend bundles.
+- `GEMINI_LIVE_MODEL`: *(Optional)* Target live model, defaults to `gemini-3.8-live`.
+
+#### Netlify Serverless Functions (`netlify/functions/`)
+- `gemini-token.ts`: Mints short-lived ephemeral session tokens for secure browser WebSocket Live connection.
+- `gemini-status.ts`: Returns live backend readiness and configuration diagnostics.
+- `gemini-models.ts`: Performs dynamic model discovery and access tier verification.
+- `gemini-query.ts`: Handles grounded tool-calling queries with multi-turn conversation memory and automatic model fallback.
 
 ---
 
