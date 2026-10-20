@@ -533,11 +533,17 @@ export class BusinessDataProvider implements IBusinessDataProvider {
     }>
   > {
     const targetId = (productIdOrKeyword || '').toLowerCase().trim();
+    const cleanTarget = targetId.replace(/[-_]/g, ' ');
     const product = this.products.find(
       (p) =>
         p.id.toLowerCase() === targetId ||
+        p.slug.toLowerCase() === targetId ||
         p.slug.toLowerCase().includes(targetId) ||
-        p.name.toLowerCase().includes(targetId)
+        p.name.toLowerCase().includes(targetId) ||
+        (cleanTarget.includes('ortho') && p.id.includes('ortho')) ||
+        (cleanTarget.includes('luxe') && p.id.includes('luxe')) ||
+        (cleanTarget.includes('elevate') && p.id.includes('elevate')) ||
+        (cleanTarget.includes('recliner') && p.id.includes('recliner'))
     );
 
     if (!product) {
