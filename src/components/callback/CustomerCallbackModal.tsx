@@ -59,13 +59,7 @@ export const CustomerCallbackModal: React.FC = () => {
     toggleMute,
     isVoiceOutputEnabled,
     toggleVoiceOutput,
-    startSession,
-    endSession,
-    askQuestion,
-    speakAnswer,
-    stopSpeaking,
-    turns,
-    userTranscript
+    stopSpeaking
   } = useGeminiLive();
 
   // Modal Step State
@@ -139,42 +133,17 @@ export const CustomerCallbackModal: React.FC = () => {
     };
   }, [step, callTurnStage]);
 
-  // Sync Gemini Live turns into live transcript while preserving greeting
-  useEffect(() => {
-    if (step === 'ai_workspace' && turns.length > 0) {
-      const mapped = turns.map((t) => ({
-        id: t.id,
-        speaker: (t.speaker === 'user' ? 'client' : 'ai') as 'client' | 'ai',
-        text: t.text,
-        time: t.timestamp
-      }));
-
-      const fullTranscript = greetingRef.current
-        ? [greetingRef.current, ...mapped]
-        : mapped;
-
-      setLiveTranscript(fullTranscript);
-
-      // If AI just finished answering, hand the floor back to the client!
-      const lastTurn = turns[turns.length - 1];
-      if (
-        lastTurn &&
-        lastTurn.speaker === 'assistant' &&
-        !isAiSpeaking &&
-        !isAiThinking &&
-        !isClientSpeaking
-      ) {
-        setCallTurnStage('client_turn');
-      }
-    }
-  }, [turns, step, isAiSpeaking, isAiThinking, isClientSpeaking]);
+  // NOTE: liveTranscript is managed 100% locally in this modal.
+  // We intentionally do NOT sync from the shared GeminiLive `turns` state
+  // because startSession() activates BrowserSpeechRecognition which would
+  // pick up speaker audio word-by-word via the mic and corrupt the transcript.
 
   // Auto-scroll live transcript to bottom
   useEffect(() => {
     if (transcriptEndRef.current) {
       transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [liveTranscript, isAiThinking, userTranscript, callTurnStage, isClientSpeaking]);
+  }, [liveTranscript, isAiThinking, callTurnStage, isClientSpeaking]);
 
   // Cleanup timers and speech on unmount
   useEffect(() => {
@@ -373,11 +342,14 @@ export const CustomerCallbackModal: React.FC = () => {
     // 1. Play realistic telephone ringing tone
     playTelephoneTone(440, 480, 1100, 0.05);
 
-    try {
-      await startSession();
-    } catch (e) {
-      console.warn('[CustomerCallbackModal] Live session start error (fallback active):', e);
-    }
+    // NOTE: We do NOT call startSession() here.
+    // startSession() enables BrowserSpeechRecognition which would pick up
+    // audio from the speakers and create an acoustic feedback loop that
+    // (a) causes word-by-word STT leakage into the transcript and
+    // (b) triggers rogue askQuestion() calls that produce a competing
+    //     "Hello I'm an AI assistant" voiceover.
+    // Instead we call executeAiTurn() when the client finishes speaking —
+    // it hits /api/gemini/query directly without activating STT.
 
     // 2. Phone Call Sequence: Ringing (1.2s) -> Client answers -> AI speaks greeting
     stageTimeoutRef.current = setTimeout(() => {
@@ -398,12 +370,48 @@ export const CustomerCallbackModal: React.FC = () => {
       greetingRef.current = greetingRecord;
       setLiveTranscript([greetingRecord]);
 
-      speakAnswer(greetingText);
+      // Use speechSynthesis onend so the client only speaks AFTER the AI greeting
+      // has fully finished — not at a fixed timer that may fire too early or too late.
+      const greetingUtterance = new SpeechSynthesisUtterance(
+        greetingText.replace(/[*_#`~[\]]/g, '').replace(/₹\s*/g, 'Rupees ')
+      );
+      greetingUtterance.rate = 1.05;
+      greetingUtterance.pitch = 1.1;
+      greetingUtterance.lang = 'en-IN';
+      const aiVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+      const aiVoice =
+        aiVoices.find(
+          (v) =>
+            v.lang.startsWith('en') &&
+            (v.name.includes('Zira') ||
+              v.name.includes('Google UK English Female') ||
+              v.name.includes('Samantha') ||
+              v.name.includes('Female'))
+        ) ||
+        aiVoices.find((v) => v.lang.startsWith('en')) ||
+        aiVoices[0];
+      if (aiVoice) greetingUtterance.voice = aiVoice;
 
-      // 3. Hand floor over to client after AI finishes speaking (~4.2s) -> Client speaks automatically!
-      stageTimeoutRef.current = setTimeout(() => {
+      greetingUtterance.onend = () => {
+        // Greeting finished — hand floor to client
         triggerAutomaticClientSpeech();
-      }, 4200);
+      };
+      greetingUtterance.onerror = () => {
+        // Fallback: give the client the floor after a short pause
+        stageTimeoutRef.current = setTimeout(() => {
+          triggerAutomaticClientSpeech();
+        }, 800);
+      };
+
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(greetingUtterance);
+      } else {
+        // No TTS available: go straight to client turn
+        stageTimeoutRef.current = setTimeout(() => {
+          triggerAutomaticClientSpeech();
+        }, 1000);
+      }
     }, 1200);
   };
 
@@ -441,14 +449,112 @@ export const CustomerCallbackModal: React.FC = () => {
       return [...base, ...others, clientTurnRecord];
     });
 
-    // Speak customer's voice aloud through speakers!
+    // Speak customer's voice aloud through speakers — then hand off to AI
     speakClientVoice(clientQuestion, async () => {
-      // Once customer finishes speaking:
-      setCallTurnStage('ai_responding');
-
-      // AI executes checkProductStock tool and speaks response back!
-      await askQuestion(clientQuestion);
+      // Once customer finishes speaking, AI responds with executeAiTurn (not askQuestion)
+      // executeAiTurn manages local transcript + speech + turn-pacing without touching STT
+      await executeAiTurn(clientQuestion);
     });
+  };
+
+  // Self-contained AI query: calls server directly, writes to local liveTranscript,
+  // and speaks the response with a proper onend callback so turn-pacing is correct.
+  const executeAiTurn = async (question: string) => {
+    setCallTurnStage('ai_responding');
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+      // Build history from current local transcript (exclude dialing/meta entries)
+      const localHistory = liveTranscript
+        .filter((t) => t.id !== 'ai-greeting')
+        .slice(-6)
+        .map((t) => ({
+          role: t.speaker === 'client' ? 'user' : ('model' as 'user' | 'model'),
+          parts: [{ text: t.text }]
+        }));
+
+      const res = await fetch('/api/gemini/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          message: question,
+          conversationHistory: localHistory
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.text) {
+        console.warn('[CustomerCallbackModal] AI query failed:', data.message);
+        setCallTurnStage('client_turn');
+        return;
+      }
+
+      const aiResponseText: string = data.text;
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // Append AI turn to local transcript
+      const aiTurnRecord = {
+        id: `ai-turn-${Date.now()}`,
+        speaker: 'ai' as const,
+        text: aiResponseText,
+        time: nowStr
+      };
+      setLiveTranscript((prev) => [...prev, aiTurnRecord]);
+
+      // Speak the AI response aloud — use speechSynthesis directly with onend callback
+      const cleanText = aiResponseText
+        .replace(/[*_#`~[\]]/g, '')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/₹\s*/g, 'Rupees ');
+
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const aiUtterance = new SpeechSynthesisUtterance(cleanText);
+        aiUtterance.rate = 1.05;
+        aiUtterance.pitch = 1.1;
+        aiUtterance.lang = 'en-IN';
+        const aiVoicesNow = window.speechSynthesis.getVoices();
+        const aiVoiceNow =
+          aiVoicesNow.find(
+            (v) =>
+              v.lang.startsWith('en') &&
+              (v.name.includes('Zira') ||
+                v.name.includes('Google UK English Female') ||
+                v.name.includes('Samantha') ||
+                v.name.includes('Female'))
+          ) ||
+          aiVoicesNow.find((v) => v.lang.startsWith('en')) ||
+          aiVoicesNow[0];
+        if (aiVoiceNow) aiUtterance.voice = aiVoiceNow;
+
+        // Sync waveform: mark ai_responding while speaking
+        aiUtterance.onstart = () => {
+          setCallTurnStage('ai_responding');
+        };
+        aiUtterance.onend = () => {
+          stopSpeaking(); // ensure shared isAiSpeaking = false
+          setCallTurnStage('client_turn');
+        };
+        aiUtterance.onerror = () => {
+          stopSpeaking();
+          setCallTurnStage('client_turn');
+        };
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(aiUtterance);
+      } else {
+        // No TTS: just mark client turn after short pause
+        setTimeout(() => setCallTurnStage('client_turn'), 500);
+      }
+    } catch (err: any) {
+      console.warn('[CustomerCallbackModal] executeAiTurn error:', err);
+      setCallTurnStage('client_turn');
+    }
   };
 
   // Client speaks (via simulated client voice trigger or microphone)
@@ -477,8 +583,7 @@ export const CustomerCallbackModal: React.FC = () => {
 
     // Speak the client's voice aloud first so the interaction is heard!
     speakClientVoice(clientSpeech, async () => {
-      setCallTurnStage('ai_responding');
-      await askQuestion(clientSpeech);
+      await executeAiTurn(clientSpeech);
     });
   };
 
@@ -490,7 +595,7 @@ export const CustomerCallbackModal: React.FC = () => {
     setIsClientSpeaking(false);
     setClientSpeakingText('');
     stopSpeaking();
-    endSession();
+    // endSession() intentionally omitted — no session was started.
     setCallTurnStage('ended');
 
     if (stageTimeoutRef.current) {
@@ -1125,15 +1230,7 @@ export const CustomerCallbackModal: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Real-time speech transcription card while speaking */}
-                  {userTranscript && (
-                    <div className={styles.liveTranscribingCard}>
-                      <Mic size={14} />
-                      <span>
-                        Transcribing client spoken voice: &quot;{userTranscript}&quot;
-                      </span>
-                    </div>
-                  )}
+                  {/* Real-time speech transcription: shown via isClientSpeaking + clientSpeakingText only */}
 
                   {/* Processing indicator when AI is querying verified tools */}
                   {isAiThinking && (
