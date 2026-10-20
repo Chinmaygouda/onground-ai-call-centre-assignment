@@ -265,3 +265,16 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+@media (max-width: 640px) {
+  .popover {
+    position: fixed;
+    top: calc(var(--topbar-height-mobile, 50px) + 6px + env(safe-area-inset-top, 0px));
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 75px);
+  }
+}
+

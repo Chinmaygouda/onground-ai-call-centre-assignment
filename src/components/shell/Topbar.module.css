@@ -295,6 +295,10 @@
 }
 
 @media (max-width: 768px) {
+  .topbar {
+    height: calc(var(--topbar-height-mobile, 50px) + env(safe-area-inset-top, 0px));
+  }
+
   .hamburgerBtn {
     display: flex;
   }
@@ -314,10 +318,16 @@
   }
 }
 
+@media (max-width: 640px) {
+  .searchKbd {
+    display: none;
+  }
+}
+
 @media (max-width: 480px) {
   .topbar {
-    padding-left: max(10px, env(safe-area-inset-left, 0px));
-    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
   }
 
   .brandName {
@@ -333,6 +343,27 @@
     border-radius: 50%;
     width: 32px;
     height: 32px;
+    min-width: 32px;
     justify-content: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .searchTriggerText {
+    display: none;
+  }
+
+  .searchTriggerBtn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    margin-left: 4px;
+    min-width: 32px;
+  }
+
+  .userSection {
+    gap: 6px;
   }
 }

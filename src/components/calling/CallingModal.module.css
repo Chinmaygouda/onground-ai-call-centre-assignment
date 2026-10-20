@@ -288,3 +288,27 @@
   }
 }
 
+@media (max-width: 480px) {
+  .modalOverlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modalCard {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .modalHeader {
+    padding: 16px;
+  }
+
+  .avatarLarge {
+    width: 60px;
+    height: 60px;
+    font-size: 20px;
+  }
+}
+
+

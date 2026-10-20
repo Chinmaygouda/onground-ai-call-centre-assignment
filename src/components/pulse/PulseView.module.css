@@ -841,6 +841,30 @@
 }
 
 @media (max-width: 480px) {
+  .pulseHeader {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .channelHeader {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .channelHeaderLeft {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .weekSwitcher {
+    padding: 2px 6px;
+    gap: 4px;
+  }
+
+  .weekLabel {
+    font-size: 10.5px;
+  }
+
   .msgRowLeft,
   .msgRowRight {
     max-width: 95%;
@@ -849,5 +873,11 @@
   .chatStream {
     padding: 12px 10px;
   }
+
+  .chatComposer {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom, 0px)) 12px;
+    gap: 8px;
+  }
 }
+
 

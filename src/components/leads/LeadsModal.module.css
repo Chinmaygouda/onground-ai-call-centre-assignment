@@ -392,3 +392,15 @@
   }
 }
 
+@media (max-width: 400px) {
+  .modalHeader {
+    padding: 14px 16px;
+  }
+
+  .modalContent {
+    padding: 14px 16px max(20px, env(safe-area-inset-bottom, 0px)) 16px;
+    gap: 12px;
+  }
+}
+
+

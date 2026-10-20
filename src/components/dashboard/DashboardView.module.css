@@ -498,8 +498,13 @@
 }
 
 @media (max-width: 640px) {
+  .headerBanner {
+    padding: 16px 14px;
+    gap: 16px;
+  }
+
   .progressMetricsRow {
-    gap: 20px;
+    gap: 16px;
     flex-wrap: wrap;
   }
 
@@ -516,6 +521,8 @@
   .waitingNameRow {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .earningsAmount {
@@ -536,9 +543,14 @@
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 480px) {
+  .headerBanner {
+    padding: 14px 10px;
+  }
+
   .kpiGrid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .kpiValue {
@@ -548,5 +560,27 @@
   .kpiCard {
     padding: 12px 14px;
   }
+
+  .progressCard,
+  .earningsCard,
+  .tasksCard,
+  .chartCard {
+    padding: 14px 16px;
+  }
 }
+
+@media (max-width: 380px) {
+  .kpiGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiValue {
+    font-size: 20px;
+  }
+
+  .kpiCard {
+    padding: 10px 12px;
+  }
+}
+
 

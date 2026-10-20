@@ -189,3 +189,39 @@
 .submitBtn:hover {
   background-color: #065f46;
 }
+
+@media (max-width: 560px) {
+  .backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 90dvh;
+  }
+
+  .form {
+    max-height: calc(90dvh - 120px);
+    padding: 16px;
+  }
+
+  .twoCol {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .cancelBtn,
+  .submitBtn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

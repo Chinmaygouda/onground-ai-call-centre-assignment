@@ -3,14 +3,15 @@
   --sidebar-width: 224px;
   --sidebar-width-desktop: 224px;
   --sidebar-width-tablet: 68px;
-  --sidebar-width-mobile: 280px;
+  --sidebar-width-mobile: min(290px, 85vw);
   --topbar-height: 54px;
+  --topbar-height-mobile: 50px;
   --header-banner-height: auto;
   --content-max-width: 1440px;
-  --content-padding-x: clamp(1rem, 2.5vw, 2rem);
-  --content-padding-y: clamp(1rem, 2vw, 1.5rem);
+  --content-padding-x: clamp(0.75rem, 2vw, 2rem);
+  --content-padding-y: clamp(0.75rem, 1.8vw, 1.5rem);
 
-  /* Safe Area Insets (iPhones & Cutouts) */
+  /* Safe Area Insets (iPhones, Android status bars & Home indicators) */
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
@@ -21,6 +22,7 @@
   --touch-target-compact: 36px;
 
   /* Fluid Spacing Scale */
+  --space-3xs: clamp(0.125rem, 0.25vw, 0.25rem);
   --space-2xs: clamp(0.25rem, 0.5vw, 0.375rem);
   --space-xs: clamp(0.375rem, 0.75vw, 0.5rem);
   --space-sm: clamp(0.5rem, 1vw, 0.75rem);
@@ -29,12 +31,13 @@
   --space-xl: clamp(1.25rem, 2.5vw, 2rem);
   --space-2xl: clamp(1.5rem, 3vw, 2.5rem);
 
-  /* Fluid Typography Scale */
-  --font-size-hero: clamp(1.375rem, 1.15rem + 0.9vw, 2rem);
-  --font-size-section: clamp(1rem, 0.925rem + 0.35vw, 1.25rem);
-  --font-size-kpi: clamp(1.5rem, 1.25rem + 1vw, 2rem);
-  --font-size-body: clamp(0.8125rem, 0.8rem + 0.1vw, 0.875rem);
-  --font-size-sub: clamp(0.75rem, 0.725rem + 0.12vw, 0.8125rem);
+  /* Fluid Typography Scale (Carefully balanced for mobile legibility and desktop fidelity) */
+  --font-size-hero: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  --font-size-section: clamp(0.95rem, 0.875rem + 0.35vw, 1.15rem);
+  --font-size-kpi: clamp(1.35rem, 1.15rem + 0.9vw, 1.75rem);
+  --font-size-body: clamp(0.8125rem, 0.78rem + 0.12vw, 0.875rem);
+  --font-size-sub: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
+  --font-size-caption: clamp(0.6875rem, 0.65rem + 0.08vw, 0.75rem);
   --font-size-xs: 0.6875rem;
 
   /* Border Radii */
