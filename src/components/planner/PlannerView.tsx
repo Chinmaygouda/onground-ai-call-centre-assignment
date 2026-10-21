@@ -213,6 +213,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                 className={styles.itemPhone}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  console.log(`[PlannerView] Exotel phone clicked for lead: ${lead.name}`);
                                   startCall({
                                     name: lead.name,
                                     phone: lead.phone,
@@ -242,6 +243,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  console.log(`[PlannerView] Exotel Call button clicked for lead: ${lead.name}`);
                                   startCall({
                                     name: lead.name,
                                     phone: lead.phone,
@@ -687,6 +689,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     style={{ flex: 1, justifyContent: 'center', backgroundColor: '#0284c7' }}
                     onClick={() => {
                       const phoneToCall = selectedCallReview.phone || '+917338626120';
+                      console.log(`[PlannerView] Review modal Exotel Call clicked for contact: ${selectedCallReview.name}`);
                       setSelectedCallReview(null);
                       startCall({
                         name: selectedCallReview.name,

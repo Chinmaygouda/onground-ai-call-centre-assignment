@@ -59,6 +59,7 @@ export const FloatingActionPill: React.FC = () => {
       <button
         className={styles.pillButton}
         onClick={() => {
+          console.log('[FloatingActionPill] Exotel Call button clicked for contact: Ashray K');
           startCall({
             name: 'Ashray K',
             phone: '+917338626120',

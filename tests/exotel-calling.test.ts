@@ -124,7 +124,7 @@ assert(callingContent.includes('/api/exotel/call'), 'CallingContext calls server
 assert(callingContent.includes('/api/exotel/call-status'), 'CallingContext polls server endpoint /api/exotel/call-status');
 
 // 8. Environment Template (.env.example)
-console.log('\n[8/8] Environment Template Verification (.env.example)');
+console.log('\n[8/9] Environment Template Verification (.env.example)');
 const envExamplePath = path.resolve(process.cwd(), '.env.example');
 const envExampleContent = fs.readFileSync(envExamplePath, 'utf-8');
 
@@ -134,6 +134,22 @@ assert(envExampleContent.includes('EXOTEL_API_TOKEN='), '.env.example contains E
 assert(envExampleContent.includes('EXOTEL_CALLER_ID='), '.env.example contains EXOTEL_CALLER_ID');
 assert(envExampleContent.includes('EXOTEL_AGENT_PHONE='), '.env.example contains EXOTEL_AGENT_PHONE');
 assert(!envExampleContent.includes('VITE_EXOTEL'), '.env.example contains no VITE_ prefixed Exotel secrets');
+
+// 9. Click-to-Call Invocation & Duplicate Guard Regression Check
+console.log('\n[9/9] Click-to-Call Flow & Duplicate Guard Regression Check');
+const startCallPos = callingContent.indexOf('const startCall = async');
+const guardPos = callingContent.indexOf("callStateRef.current.lifecycle !== 'IDLE'", startCallPos);
+const setDialingPos = callingContent.indexOf('setCallState({', startCallPos);
+const exotelRealBlockPos = callingContent.indexOf("if (mode === 'EXOTEL_REAL')", startCallPos);
+
+assert(startCallPos !== -1, 'startCall function exists in CallingContext.tsx');
+assert(guardPos !== -1, 'Duplicate-call guard exists in startCall');
+assert(guardPos > startCallPos && guardPos < setDialingPos, 'Duplicate-call guard is evaluated BEFORE state transitions to DIALING');
+assert(guardPos < exotelRealBlockPos, 'Duplicate-call guard is at top of startCall, not buried inside mode === EXOTEL_REAL');
+assert(!callingContent.includes("if (mode === 'EXOTEL_REAL') {\n      if (callStateRef.current.lifecycle !== 'IDLE'"), 'Self-blocking guard pattern is eliminated');
+assert(callingContent.includes('/.netlify/functions/exotel-call'), 'Graceful fallback to direct Netlify function path exists');
+assert(callingContent.includes('[Calling:Exotel] Initiating outbound call for contact'), 'Safe log on initiation is present');
+assert(callingContent.includes('[Calling:Exotel] Dispatching call request to endpoint'), 'Safe log on fetch dispatch is present');
 
 console.log('\n======================================================');
 console.log(` RESULTS: ${passedTests} PASSED, ${failedTests} FAILED`);

@@ -867,6 +867,7 @@ export const CustomerCallbackModal: React.FC = () => {
                 background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(2, 132, 199, 0.03))'
               }}
               onClick={() => {
+                console.log(`[CustomerCallbackModal] Exotel Call option clicked for customer: ${callbackCustomer.name}`);
                 handleCloseModal();
                 startCall({
                   name: callbackCustomer.name,

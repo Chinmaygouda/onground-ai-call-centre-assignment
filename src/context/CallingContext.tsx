@@ -475,6 +475,18 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     value?: number;
     product?: string;
   }) => {
+    // 1. Prevent duplicate calls if a call is already active
+    if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
+      console.warn(`[Calling] Call already in progress (${callStateRef.current.lifecycle}), ignoring duplicate request.`);
+      return;
+    }
+
+    // Synchronously guard against rapid microtask re-entrancy
+    callStateRef.current = {
+      ...callStateRef.current,
+      lifecycle: 'DIALING'
+    };
+
     stopMediaCapture();
     pendingIceCandidatesRef.current = [];
     remotePeerTabIdRef.current = null;
@@ -486,9 +498,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .toUpperCase()
       .substring(0, 2);
 
-    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} startCall initiated: '${name}', phone: '${phone}', mode: '${mode}'`);
+    console.log(`[Calling] Tab ${tabSessionId.current} startCall initiated for '${name}', mode: '${mode}'`);
 
     if (mode === 'PHONE') {
+      callStateRef.current = { ...callStateRef.current, lifecycle: 'IDLE' };
       const telUri = getTelUri(phone) || `tel:${phone.replace(/\s+/g, '')}`;
       console.log(`[Calling:Native] Invoking device dialer via ${telUri}`);
       window.location.href = telUri;
@@ -505,36 +518,27 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       productInterest: product,
       durationSeconds: 0,
       isMuted: false,
-      aiResponseText: mode === 'WEBRTC_PEER' ? 'Broadcasting in-app call to peer tabs...' : 'Connecting secure audio stream...'
+      exotelStatus: mode === 'EXOTEL_REAL' ? 'initiating' : undefined,
+      isConfigured: mode === 'EXOTEL_REAL' ? true : undefined,
+      aiResponseText:
+        mode === 'WEBRTC_PEER'
+          ? 'Broadcasting in-app call to peer tabs...'
+          : mode === 'EXOTEL_REAL'
+          ? 'Requesting Exotel outbound PSTN connection...'
+          : 'Connecting secure audio stream...'
     });
 
     await startAudioVisualizer();
 
     if (mode === 'EXOTEL_REAL') {
-      if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
-        console.warn('[Calling:Exotel] Call in progress, ignoring duplicate call request.');
-        return;
-      }
+      const maskedPhone = phone ? `${phone.slice(0, 3)}***${phone.slice(-4)}` : '[NONE]';
+      console.log(`[Calling:Exotel] Initiating outbound call for contact "${name}" (${maskedPhone})`);
 
-      setCallState({
-        lifecycle: 'DIALING',
-        mode: 'EXOTEL_REAL',
-        contactName: name,
-        contactInitials: initials,
-        contactPhone: phone,
-        expectedValue: value,
-        productInterest: product,
-        durationSeconds: 0,
-        isMuted: false,
-        exotelStatus: 'initiating',
-        isConfigured: true,
-        aiResponseText: 'Requesting Exotel outbound PSTN connection...'
-      });
-
-      await startAudioVisualizer();
+      const endpoint = '/api/exotel/call';
+      console.log(`[Calling:Exotel] Dispatching call request to endpoint: ${endpoint}`);
 
       try {
-        const response = await fetch('/api/exotel/call', {
+        let response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -543,10 +547,28 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           })
         });
 
+        // Graceful fallback: If /api/exotel/call 404s (e.g. redirect rules not processed), try direct Netlify function path
+        if (response.status === 404) {
+          console.warn('[Calling:Exotel] /api/exotel/call returned 404, attempting fallback to /.netlify/functions/exotel-call');
+          response = await fetch('/.netlify/functions/exotel-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: phone,
+              clientName: name
+            })
+          });
+        }
+
         const data = await response.json();
+        console.log(`[Calling:Exotel] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}`);
 
         if (!response.ok || !data.success) {
-          console.warn('[Calling:Exotel] Initiation rejected or unconfigured:', data);
+          console.warn('[Calling:Exotel] Initiation rejected or unconfigured:', {
+            error: data.error,
+            message: data.message,
+            configured: data.configured
+          });
           setCallState((prev) => ({
             ...prev,
             lifecycle: data.configured === false ? 'DIALING' : 'ENDED',
@@ -559,14 +581,16 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         const callSid = data.callSid;
         exotelCallSidRef.current = callSid;
+        console.log(`[Calling:Exotel] Call initiated successfully. Call SID: ${callSid}`);
 
+        const maskedAgent = data.agentPhone ? `${data.agentPhone.slice(0, 3)}***${data.agentPhone.slice(-4)}` : 'configured phone';
         setCallState((prev) => ({
           ...prev,
           lifecycle: 'RINGING',
           exotelCallSid: callSid,
           exotelStatus: 'calling_employee',
           exotelCallerId: data.callerId,
-          aiResponseText: `Exotel dialing employee (${data.agentPhone || 'configured phone'}). Please answer Leg A.`
+          aiResponseText: `Exotel dialing employee (${maskedAgent}). Please answer Leg A.`
         }));
 
         if (exotelPollIntervalRef.current) {
@@ -577,7 +601,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         exotelPollIntervalRef.current = window.setInterval(async () => {
           try {
-            const statusRes = await fetch(`/api/exotel/call-status?callSid=${encodeURIComponent(callSid)}`);
+            let statusRes = await fetch(`/api/exotel/call-status?callSid=${encodeURIComponent(callSid)}`);
+            if (statusRes.status === 404) {
+              statusRes = await fetch(`/.netlify/functions/exotel-status?callSid=${encodeURIComponent(callSid)}`);
+            }
             if (!statusRes.ok) return;
             const statusData = await statusRes.json();
             if (!statusData.success) return;
@@ -596,7 +623,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 ...prev,
                 lifecycle: 'RINGING',
                 exotelStatus: 'calling_client',
-                aiResponseText: `Employee answered. Ringing client ${name} (${phone})...`
+                aiResponseText: `Employee answered. Ringing client ${name} (${maskedPhone})...`
               }));
             } else if (currentStatus === 'connected') {
               if (!isBridgeConnected) {
@@ -746,6 +773,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const targetTabId = remotePeerTabIdRef.current;
     remotePeerTabIdRef.current = null;
+    callStateRef.current = {
+      ...callStateRef.current,
+      lifecycle: 'ENDED'
+    };
 
     setCallState((prev) => ({
       ...prev,
@@ -764,6 +795,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     setTimeout(() => {
+      callStateRef.current = initialCallState;
       setCallState(initialCallState);
     }, 2000);
   };

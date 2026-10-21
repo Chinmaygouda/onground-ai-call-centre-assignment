@@ -48,6 +48,7 @@ export const LeadsModal: React.FC = () => {
   };
 
   const handleExotelCall = () => {
+    console.log(`[LeadsModal] Exotel Call button clicked for lead: ${currentLead.name}`);
     closeLeadsModal();
     startCall({
       name: currentLead.name,
