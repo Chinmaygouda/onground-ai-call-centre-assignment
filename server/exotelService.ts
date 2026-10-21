@@ -1,4 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'http';
+import { parseExotelResponseBody, sanitizeExotelData, getExotelTroubleshootingHint } from '../netlify/functions/exotel-call';
 
 export interface ExotelConfig {
   accountSid?: string;
@@ -198,10 +199,13 @@ export async function handleExotelCallRequest(
 
   // 5. Build Exotel Connect API Request (Official Exotel Connect Two Numbers)
   try {
-    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect`;
+    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect.json`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
 
-    const sanitizedCallerId = callerId.trim().replace(/[\s-]/g, '');
+    let sanitizedCallerId = callerId.trim().replace(/[\s-]/g, '');
+    if (sanitizedCallerId.startsWith('+91') && sanitizedCallerId.length === 13) {
+      sanitizedCallerId = `0${sanitizedCallerId.substring(3)}`;
+    }
 
     const formParams = new URLSearchParams();
     formParams.append('From', agentNormalized.e164);
@@ -213,7 +217,7 @@ export async function handleExotelCallRequest(
     formParams.append('Record', 'true');
     formParams.append('CustomField', `client=${clientName};phone=${clientNormalized.digits};app=onground_callcentre`);
 
-    console.log(`[ExotelService] Dispatching Connect API call to https://${subdomain}: From=${agentNormalized.e164} To=${clientNormalized.e164} CallerId=${sanitizedCallerId}`);
+    console.log(`[ExotelService] Dispatching Connect API call to https://${subdomain}: From=+91*****${agentNormalized.digits.slice(-4)} To=+91*****${clientNormalized.digits.slice(-4)} CallerId=${sanitizedCallerId}`);
 
     const response = await fetch(exotelUrl, {
       method: 'POST',
@@ -226,28 +230,31 @@ export async function handleExotelCallRequest(
     });
 
     const responseText = await response.text();
-    let data: any = {};
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      data = { raw: responseText };
-    }
+    const parsed = parseExotelResponseBody(responseText);
+    const sanitizedDetails = sanitizeExotelData(parsed.RestException || parsed.raw || parsed);
 
     if (!response.ok) {
-      console.error('[ExotelService] Exotel API error:', response.status, data);
+      console.error(`[ExotelService] Exotel API error: HTTP ${response.status} ${response.statusText || ''}`);
+      console.error('[ExotelService] Sanitized upstream response body:', JSON.stringify(sanitizedDetails));
+
+      const safeMessage = parsed.message ? sanitizeExotelData(parsed.message) : `Exotel call initiation rejected with HTTP ${response.status}`;
+      const troubleshooting = getExotelTroubleshootingHint(response.status, safeMessage, subdomain);
+
       res.statusCode = 502;
       res.end(JSON.stringify({
         success: false,
         error: 'EXOTEL_API_ERROR',
         providerStatus: response.status,
-        message: data?.RestException?.Message || data?.message || 'Exotel rejected call initiation request.',
-        details: data?.RestException || data
+        providerCode: parsed.code || undefined,
+        message: safeMessage,
+        details: sanitizedDetails,
+        troubleshooting
       }));
       return;
     }
 
-    const callSid = data?.Call?.Sid || `exo_${Date.now()}`;
-    const rawStatus = data?.Call?.Status || 'in-progress';
+    const callSid = parsed.sid || parsed?.Call?.Sid || `exo_${Date.now()}`;
+    const rawStatus = parsed.rawStatus || parsed?.Call?.Status || 'in-progress';
 
     res.statusCode = 200;
     res.end(JSON.stringify({

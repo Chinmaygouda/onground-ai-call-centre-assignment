@@ -566,15 +566,22 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!response.ok || !data.success) {
           console.warn('[Calling:Exotel] Initiation rejected or unconfigured:', {
             error: data.error,
+            providerStatus: data.providerStatus,
+            providerCode: data.providerCode,
             message: data.message,
+            troubleshooting: data.troubleshooting,
             configured: data.configured
           });
+
+          const displayError = data.message || 'Call initiation failed';
+          const detailedExplanation = data.troubleshooting ? `${displayError} — ${data.troubleshooting}` : displayError;
+
           setCallState((prev) => ({
             ...prev,
             lifecycle: data.configured === false ? 'DIALING' : 'ENDED',
             isConfigured: data.configured !== false,
-            providerError: data.message || 'Call initiation failed',
-            aiResponseText: data.message || 'Call initiation rejected by telephony provider.'
+            providerError: displayError,
+            aiResponseText: detailedExplanation
           }));
           return;
         }
