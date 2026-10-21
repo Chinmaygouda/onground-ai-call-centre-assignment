@@ -56,11 +56,29 @@ export const FloatingActionPill: React.FC = () => {
         <span>In-app call</span>
       </button>
 
+      <button
+        className={styles.pillButton}
+        onClick={() => {
+          startCall({
+            name: 'Chinmaygouda',
+            phone: '+917204104491',
+            mode: 'EXOTEL_REAL',
+            value: 8490,
+            product: 'Ortho GRID'
+          });
+        }}
+        title="Initiate Real Phone Call to Chinmaygouda (+917204104491) via Exotel Telephony"
+        style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+      >
+        <Phone size={13} />
+        <span>Exotel call</span>
+      </button>
+
       <a
         href="tel:+917204104491"
         className={styles.pillButton}
-        title="Call demo customer Mukunda at +91 72041 04491 (opens device dialer)"
-        aria-label="Call Mukunda at +91 72041 04491 using device dialer"
+        title="Call client Chinmaygouda at +91 72041 04491 (opens device dialer)"
+        aria-label="Call Chinmaygouda at +91 72041 04491 using device dialer"
       >
         <Phone size={13} />
         <span>Phone call</span>

@@ -51,6 +51,9 @@ export interface MissedCall {
   expectedValue: number;
   phone: string;
   isResolved?: boolean;
+  provider?: 'exotel' | 'demo' | 'native';
+  isDemoRecord?: boolean;
+  callSid?: string;
 }
 
 export interface RecentCall {
@@ -65,6 +68,10 @@ export interface RecentCall {
   greetingPassed?: boolean;
   notes?: string;
   transcript?: { speaker: string; text: string; time: string }[];
+  provider?: 'exotel' | 'demo' | 'native';
+  isDemoRecord?: boolean;
+  callSid?: string;
+  recordingUrl?: string;
 }
 
 export interface CalendarEvent {
@@ -138,7 +145,19 @@ export interface PinnedDecision {
 }
 
 export type CallLifecycle = 'IDLE' | 'DIALING' | 'RINGING' | 'CONNECTED' | 'ENDED';
-export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE';
+export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE' | 'EXOTEL_REAL';
+
+export type ExotelCallStatus =
+  | 'initiating'
+  | 'calling_employee'
+  | 'employee_answered'
+  | 'calling_client'
+  | 'connected'
+  | 'completed'
+  | 'busy'
+  | 'no_answer'
+  | 'failed'
+  | 'cancelled';
 
 export interface ActiveCallState {
   lifecycle: CallLifecycle;
@@ -152,5 +171,12 @@ export interface ActiveCallState {
   isMuted: boolean;
   transcriptSnippet?: string;
   aiResponseText?: string;
+  // Exotel Telephony metadata
+  exotelCallSid?: string;
+  exotelStatus?: ExotelCallStatus;
+  exotelCallerId?: string;
+  recordingUrl?: string;
+  providerError?: string;
+  isConfigured?: boolean;
 }
 

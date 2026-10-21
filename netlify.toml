@@ -27,6 +27,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/exotel/call"
+  to = "/.netlify/functions/exotel-call"
+  status = 200
+
+[[redirects]]
+  from = "/api/exotel/call-status"
+  to = "/.netlify/functions/exotel-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/exotel/callback"
+  to = "/.netlify/functions/exotel-callback"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

@@ -47,6 +47,17 @@ export const LeadsModal: React.FC = () => {
     });
   };
 
+  const handleExotelCall = () => {
+    closeLeadsModal();
+    startCall({
+      name: currentLead.name,
+      phone: currentLead.phone,
+      mode: 'EXOTEL_REAL',
+      value: currentLead.price,
+      product: currentLead.product
+    });
+  };
+
 
 
   return (
@@ -242,6 +253,30 @@ export const LeadsModal: React.FC = () => {
 
           {/* Direct Calling Buttons */}
           <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+            <button
+              style={{
+                flex: 1,
+                backgroundColor: '#0284c7',
+                color: '#ffffff',
+                padding: '10px',
+                borderRadius: '9999px',
+                fontSize: '13px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)',
+                cursor: 'pointer',
+                border: 'none'
+              }}
+              onClick={handleExotelCall}
+              title={`Call ${currentLead.name} via Exotel Telephony (Real Phone)`}
+            >
+              <Phone size={14} />
+              <span>Exotel call</span>
+            </button>
+
             <button
               style={{
                 flex: 1,

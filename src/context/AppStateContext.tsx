@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   AppRoute,
   Lead,
@@ -112,7 +112,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [agent, setAgent] = useState<AgentProfile>(mockAgent);
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>(mockMissedCalls);
-  const [recentCalls, setRecentCalls] = useState<RecentCall[]>(mockRecentCalls);
+  const [recentCalls, setRecentCalls] = useState<RecentCall[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('onground_recent_calls');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return mockRecentCalls;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('onground_recent_calls', JSON.stringify(recentCalls));
+      } catch {
+        // ignore
+      }
+    }
+  }, [recentCalls]);
+
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(mockCalendarEvents);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
   const [pinnedDecision, setPinnedDecision] = useState<PinnedDecision>(mockPinnedDecision);

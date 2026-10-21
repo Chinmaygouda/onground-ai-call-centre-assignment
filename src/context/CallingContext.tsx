@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { CallEngineMode, ActiveCallState } from '../types';
 import { getTelUri } from '../utils/phoneUtils';
+import { useAppState } from './AppStateContext';
 
 export interface IncomingPeerCallInfo {
   callerName: string;
@@ -50,6 +51,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const tabSessionId = useRef<string>(
     'tab_' + Math.random().toString(36).substring(2, 8)
   );
+
+  const { recordCallInteraction } = useAppState();
+  const exotelPollIntervalRef = useRef<number | null>(null);
+  const exotelCallSidRef = useRef<string | null>(null);
 
   const [callState, setCallState] = useState<ActiveCallState>(initialCallState);
   const callStateRef = useRef<ActiveCallState>(callState);
@@ -505,6 +510,176 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     await startAudioVisualizer();
 
+    if (mode === 'EXOTEL_REAL') {
+      if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
+        console.warn('[Calling:Exotel] Call in progress, ignoring duplicate call request.');
+        return;
+      }
+
+      setCallState({
+        lifecycle: 'DIALING',
+        mode: 'EXOTEL_REAL',
+        contactName: name,
+        contactInitials: initials,
+        contactPhone: phone,
+        expectedValue: value,
+        productInterest: product,
+        durationSeconds: 0,
+        isMuted: false,
+        exotelStatus: 'initiating',
+        isConfigured: true,
+        aiResponseText: 'Requesting Exotel outbound PSTN connection...'
+      });
+
+      await startAudioVisualizer();
+
+      try {
+        const response = await fetch('/api/exotel/call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            clientName: name
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          console.warn('[Calling:Exotel] Initiation rejected or unconfigured:', data);
+          setCallState((prev) => ({
+            ...prev,
+            lifecycle: data.configured === false ? 'DIALING' : 'ENDED',
+            isConfigured: data.configured !== false,
+            providerError: data.message || 'Call initiation failed',
+            aiResponseText: data.message || 'Call initiation rejected by telephony provider.'
+          }));
+          return;
+        }
+
+        const callSid = data.callSid;
+        exotelCallSidRef.current = callSid;
+
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'RINGING',
+          exotelCallSid: callSid,
+          exotelStatus: 'calling_employee',
+          exotelCallerId: data.callerId,
+          aiResponseText: `Exotel dialing employee (${data.agentPhone || 'configured phone'}). Please answer Leg A.`
+        }));
+
+        if (exotelPollIntervalRef.current) {
+          clearInterval(exotelPollIntervalRef.current);
+        }
+
+        let isBridgeConnected = false;
+
+        exotelPollIntervalRef.current = window.setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/exotel/call-status?callSid=${encodeURIComponent(callSid)}`);
+            if (!statusRes.ok) return;
+            const statusData = await statusRes.json();
+            if (!statusData.success) return;
+
+            const currentStatus = statusData.status;
+
+            if (currentStatus === 'calling_employee') {
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'RINGING',
+                exotelStatus: 'calling_employee',
+                aiResponseText: 'Calling employee phone... Answer to connect.'
+              }));
+            } else if (currentStatus === 'employee_answered' || currentStatus === 'calling_client') {
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'RINGING',
+                exotelStatus: 'calling_client',
+                aiResponseText: `Employee answered. Ringing client ${name} (${phone})...`
+              }));
+            } else if (currentStatus === 'connected') {
+              if (!isBridgeConnected) {
+                isBridgeConnected = true;
+                timerIntervalRef.current = window.setInterval(() => {
+                  setCallState((prev) => ({
+                    ...prev,
+                    durationSeconds: prev.durationSeconds + 1
+                  }));
+                }, 1000);
+              }
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'CONNECTED',
+                exotelStatus: 'connected',
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: `Connected: PSTN line active between employee and ${name}.`
+              }));
+            } else if (
+              currentStatus === 'completed' ||
+              currentStatus === 'busy' ||
+              currentStatus === 'no_answer' ||
+              currentStatus === 'failed' ||
+              currentStatus === 'cancelled'
+            ) {
+              if (exotelPollIntervalRef.current) {
+                clearInterval(exotelPollIntervalRef.current);
+                exotelPollIntervalRef.current = null;
+              }
+              if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+              }
+
+              const finalDuration = statusData.duration || callStateRef.current.durationSeconds;
+              const mins = Math.floor(finalDuration / 60);
+              const secs = finalDuration % 60;
+              const durationStr = `${mins}m ${secs}s`;
+
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'ENDED',
+                exotelStatus: currentStatus,
+                durationSeconds: finalDuration,
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: `Call finished with provider status: ${currentStatus.replace('_', ' ').toUpperCase()}`
+              }));
+
+              const nowTimeStr = `Today ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+              recordCallInteraction({
+                id: `call-exo-${callSid}`,
+                name,
+                initials,
+                timeText: nowTimeStr,
+                duration: durationStr,
+                type: 'outbound',
+                phone,
+                sopScore: 94,
+                greetingPassed: true,
+                provider: 'exotel',
+                isDemoRecord: false,
+                callSid,
+                recordingUrl: statusData.recordingUrl || undefined,
+                notes: `Exotel Real Outbound Call to ${name} (${phone}) - Status: ${currentStatus}. Duration: ${durationStr}. Call SID: ${callSid}.`
+              });
+            }
+          } catch (pollErr) {
+            console.warn('[Calling:Exotel] Status polling error:', pollErr);
+          }
+        }, 2500);
+
+      } catch (err: any) {
+        console.error('[Calling:Exotel] Error calling endpoint:', err);
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'ENDED',
+          providerError: err?.message || 'Network error reaching backend.',
+          aiResponseText: 'Network error communicating with telephony service.'
+        }));
+      }
+      return;
+    }
+
     if (mode === 'WEBRTC_PEER') {
       setTimeout(async () => {
         setCallState((prev) => ({
@@ -562,6 +737,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const endCall = () => {
     console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} ending call`);
+    if (exotelPollIntervalRef.current) {
+      clearInterval(exotelPollIntervalRef.current);
+      exotelPollIntervalRef.current = null;
+    }
     stopMediaCapture();
     pendingIceCandidatesRef.current = [];
 

@@ -20,6 +20,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
+import { useCalling } from '../../context/CallingContext';
 import { useGeminiLive } from '../../context/GeminiLiveContext';
 import { ClickToCallButton } from '../common/ClickToCallButton';
 import { normalizePhoneNumber } from '../../utils/phoneUtils';
@@ -53,6 +54,8 @@ export const CustomerCallbackModal: React.FC = () => {
     recordCallInteraction,
     resolveMissedCall
   } = useAppState();
+
+  const { startCall } = useCalling();
 
   const {
     isAiSpeaking,
@@ -851,6 +854,48 @@ export const CustomerCallbackModal: React.FC = () => {
                 </div>
                 <p className={styles.optionDesc}>
                   Delegate the call to the OnGround AI Agent. The AI dials the client, gives an opening introduction upon pickup, listens to what the client asks, and answers with verified inventory.
+                </p>
+              </div>
+              <ArrowRight size={20} className={styles.optionArrow} />
+            </div>
+
+            {/* Option C: Call via Exotel Telephony Network */}
+            <div
+              className={styles.optionCard}
+              style={{
+                borderColor: 'rgba(56, 189, 248, 0.4)',
+                background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(2, 132, 199, 0.03))'
+              }}
+              onClick={() => {
+                handleCloseModal();
+                startCall({
+                  name: callbackCustomer.name,
+                  phone: callbackCustomer.phone,
+                  mode: 'EXOTEL_REAL',
+                  value: callbackCustomer.expectedValue
+                });
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div
+                className={styles.optionIconCircle}
+                style={{ backgroundColor: 'rgba(14, 165, 233, 0.2)', color: '#38bdf8' }}
+              >
+                <Phone size={24} />
+              </div>
+              <div className={styles.optionContent}>
+                <div className={styles.optionHeaderRow}>
+                  <h3 className={styles.optionTitle}>Call via Exotel Telephony (Real Phone)</h3>
+                  <span
+                    className={styles.optionBadge}
+                    style={{ backgroundColor: 'rgba(14, 165, 233, 0.2)', color: '#38bdf8' }}
+                  >
+                    Two-Legged PSTN Bridge
+                  </span>
+                </div>
+                <p className={styles.optionDesc}>
+                  Initiate a real telephone network call connecting your phone and {callbackCustomer.name}&apos;s phone ({callbackCustomer.phone}) through Exotel&apos;s virtual number.
                 </p>
               </div>
               <ArrowRight size={20} className={styles.optionArrow} />

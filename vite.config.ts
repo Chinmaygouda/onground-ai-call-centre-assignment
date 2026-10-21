@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { handleGeminiTokenRequest, handleGeminiStatusRequest, handleGeminiModelsRequest } from './server/geminiTokenService';
 import { handleGeminiQueryRequest } from './server/geminiQueryService';
+import { handleExotelCallRequest, handleExotelStatusRequest, handleExotelCallbackRequest } from './server/exotelService';
 
 function geminiLiveServerPlugin(): Plugin {
   return {
@@ -30,6 +31,19 @@ function geminiLiveServerPlugin(): Plugin {
         const activeKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         handleGeminiQueryRequest(req, res, activeKey);
       });
+      // Exotel Telephony Endpoints
+      server.middlewares.use('/api/exotel/call', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleExotelCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/exotel/call-status', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleExotelStatusRequest(req, res, env);
+      });
+      server.middlewares.use('/api/exotel/callback', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleExotelCallbackRequest(req, res, env);
+      });
     },
     configurePreviewServer(server) {
       server.middlewares.use('/api/gemini/token', (req, res) => {
@@ -54,6 +68,19 @@ function geminiLiveServerPlugin(): Plugin {
         const env = loadEnv('production', process.cwd(), '');
         const activeKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         handleGeminiQueryRequest(req, res, activeKey);
+      });
+      // Exotel Telephony Endpoints (Preview)
+      server.middlewares.use('/api/exotel/call', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleExotelCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/exotel/call-status', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleExotelStatusRequest(req, res, env);
+      });
+      server.middlewares.use('/api/exotel/callback', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleExotelCallbackRequest(req, res, env);
       });
     }
   };

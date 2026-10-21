@@ -59,14 +59,23 @@ The repository is fully pre-configured for one-click deployment on **Netlify**:
 
 #### Netlify Environment Variables
 Set the following in **Site settings > Environment variables** in your Netlify dashboard:
-- `GEMINI_API_KEY`: *(Required for live AI voice)* Your Google AI Studio API key. Server-side only; never leaked to frontend bundles.
+- `GEMINI_API_KEY`: *(Optional, for Gemini Live AI Voice)* Your Google AI Studio API key. Server-side only; never leaked to frontend bundles.
 - `GEMINI_LIVE_MODEL`: *(Optional)* Target live model, defaults to `gemini-3.8-live`.
+- `EXOTEL_ACCOUNT_SID`: *(Required for real PSTN calling)* Your Exotel Account SID.
+- `EXOTEL_API_KEY`: *(Required for real PSTN calling)* Your Exotel API Key.
+- `EXOTEL_API_TOKEN`: *(Required for real PSTN calling)* Your Exotel API Token.
+- `EXOTEL_CALLER_ID`: *(Required for real PSTN calling)* Your Exotel Virtual Number (ExoPhone).
+- `EXOTEL_AGENT_PHONE`: *(Required for real PSTN calling)* The frontline employee's physical telephone number (e.g. `+919876543210`). Must be distinct from client Chinmaygouda (`+917204104491`).
+- `EXOTEL_SUBDOMAIN`: *(Optional)* API cluster domain, defaults to `api.in.exotel.com`.
 
 #### Netlify Serverless Functions (`netlify/functions/`)
 - `gemini-token.ts`: Mints short-lived ephemeral session tokens for secure browser WebSocket Live connection.
 - `gemini-status.ts`: Returns live backend readiness and configuration diagnostics.
 - `gemini-models.ts`: Performs dynamic model discovery and access tier verification.
 - `gemini-query.ts`: Handles grounded tool-calling queries with multi-turn conversation memory and automatic model fallback.
+- `exotel-call.ts`: Securely initiates outbound PSTN call connecting employee and client Chinmaygouda.
+- `exotel-status.ts`: Securely queries Exotel call progression, duration, and provider audio recording.
+- `exotel-callback.ts`: Receives genuine provider terminal webhook events.
 
 ---
 
@@ -112,7 +121,23 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
   - **Live Synchronization & Cache Invalidation (Requirement H & I)**:
     - Shared singleton `businessDataProvider` invalidates caches on price mutations.
     - Automatic semantic version increments (e.g., `2026.10.1` -> `2026.10.2`) with UTC audit timestamps.
-    - Integrated **Live Catalogue Synchronization Testing Bench** in the UI allows frontline reviewers to update product prices at runtime and immediately observe cache invalidation and version bumping.
+### Engine 5: Real Telephone Network Calling via Exotel Telephony API (`PSTN Outbound`)
+- **Direct Cellular Calling to Client Chinmaygouda (`+917204104491`)**: Triggers an authentic telephone call over the public switched telephone network (PSTN) using the official Exotel Voice Connect API (`POST /v1/Accounts/{account_sid}/Calls/connect.json`).
+- **Two-Legged Outbound Workflow**:
+  1. **Leg A**: Exotel dials the frontline employee's physical mobile device (`EXOTEL_AGENT_PHONE`).
+  2. **Leg B**: Once the employee answers, Exotel dials the client **Chinmaygouda** at `+917204104491` through the configured virtual ExoPhone (`EXOTEL_CALLER_ID`) and bridges the audio.
+- **Telecom Regulatory Reality & Billing Integrity**:
+  - **Account Billed**: The business's Exotel account pays for both legs (Leg A and Leg B) from its account balance/credits.
+  - **Recipient is Free**: Under Indian Telecom Regulatory Authority (TRAI) Calling Party Pays (CPP) rules, mobile subscribers are never charged for receiving incoming calls. Chinmaygouda is not charged.
+  - **No Collect Calling**: Cellular reverse-charge or collect-calling does not exist in Indian mobile telecommunications. The application does not fabricate or claim that the client pays for the call.
+- **Strict Security & Zero Secrets in Client**:
+  - `EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_CALLER_ID`, and `EXOTEL_AGENT_PHONE` reside exclusively on the server (`server/exotelService.ts` in Vite dev mode, `netlify/functions/exotel-call.ts` and `exotel-status.ts` on Netlify).
+  - No `VITE_` prefix; zero tokens bundled into frontend JavaScript.
+  - Guard against accidental self-calls: Rejects immediately if `EXOTEL_AGENT_PHONE === clientPhone`.
+- **Durable Call History & Live Polling**:
+  - Live modal polls `/api/exotel/call-status` every 2.5 seconds, updating real-time telephony progression (`calling employee`, `employee answered`, `calling client`, `connected`, `completed`).
+  - Completed call logs, durations, and genuine provider recordings are saved durably to `localStorage` (`onground_recent_calls`) and survive serverless restarts.
+  - Pre-seeded records are clearly labeled as `isDemoRecord: true` with provider `'demo'` to ensure absolute transparency.
 
 ---
 
@@ -275,7 +300,7 @@ As instructed by the assignment ground rules:
   `callcentre_walkthrough_1792430473274.webp`
 - **Interactive Tour Highlights (under 2 minutes)**:
   1. **Dashboard Overview**: KPI cards, Today's Progress, 7-day rectangular bar charts.
-  2. **Leads Modal**: Triggered from "Follow up with Mukunda", carousel navigation (Lead 1 to 2), expandable buying signals.
+  2. **Leads Modal**: Triggered from "Follow up with Chinmaygouda", carousel navigation (Lead 1 to 2), expandable buying signals.
   3. **Voice AI Calling Engine**: Initiating an interactive call, live audio waveform visualizer, Speech-to-Text customer dialogue.
   4. **Planner Flow**: Calls to Make pagination, Incoming Missed Calls with ₹81,860 stake, Recent call SOP review drawer.
   5. **Calendar Navigation**: October 2026 month view, today highlight (Oct 9th), month switcher.

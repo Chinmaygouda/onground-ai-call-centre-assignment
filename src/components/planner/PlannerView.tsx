@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   PhoneCall,
+  Phone,
   PhoneIncoming,
   PhoneOutgoing,
   PhoneMissed,
@@ -208,7 +209,52 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                           <div className={styles.itemInfo}>
                             <div className={styles.itemNameRow}>
                               <span className={styles.itemName}>{lead.name}</span>
-                              <span className={styles.itemPhone}>{lead.phone}</span>
+                              <span
+                                className={styles.itemPhone}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startCall({
+                                    name: lead.name,
+                                    phone: lead.phone,
+                                    mode: 'EXOTEL_REAL',
+                                    value: lead.price,
+                                    product: lead.product
+                                  });
+                                }}
+                                title={`Click to initiate real phone call to ${lead.name} (${lead.phone}) via Exotel`}
+                                style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}
+                              >
+                                {lead.phone}
+                              </span>
+                              <button
+                                style={{
+                                  background: 'rgba(2, 132, 199, 0.12)',
+                                  border: '1px solid rgba(2, 132, 199, 0.4)',
+                                  color: '#0284c7',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startCall({
+                                    name: lead.name,
+                                    phone: lead.phone,
+                                    mode: 'EXOTEL_REAL',
+                                    value: lead.price,
+                                    product: lead.product
+                                  });
+                                }}
+                                title={`Initiate Real Exotel Telephone Call to ${lead.name}`}
+                              >
+                                <Phone size={11} />
+                                <span>Call Client</span>
+                              </button>
                               <ClickToCallButton phone={lead.phone} customerName={lead.name} size="sm" />
                             </div>
                             <div className={styles.itemDetail}>
@@ -309,6 +355,11 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                         <div className={styles.itemNameRow}>
                           <span className={styles.itemName}>{call.name}</span>
                           <span className={styles.itemPhone}>{call.phone}</span>
+                          {call.isDemoRecord && (
+                            <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: '9999px', color: '#fbbf24', fontWeight: 700 }}>
+                              Demo Record
+                            </span>
+                          )}
                           <ClickToCallButton phone={call.phone} customerName={call.name} size="sm" />
                         </div>
                         <div className={styles.itemDetail}>{call.missedText}</div>
@@ -439,6 +490,16 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                       <div className={styles.itemInfo}>
                         <div className={styles.itemNameRow}>
                           <span className={styles.itemName}>{call.name}</span>
+                          {call.provider === 'exotel' && (
+                            <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(2, 132, 199, 0.15)', border: '1px solid rgba(2, 132, 199, 0.4)', borderRadius: '9999px', color: '#0284c7', fontWeight: 700 }}>
+                              Exotel PSTN
+                            </span>
+                          )}
+                          {call.isDemoRecord && (
+                            <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: '9999px', color: '#fbbf24', fontWeight: 700 }}>
+                              Demo Record
+                            </span>
+                          )}
                           {call.phone ? (
                             <>
                               <span className={styles.itemPhone}>{call.phone}</span>
@@ -623,6 +684,23 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                 <div className={styles.drawerActions}>
                   <button
                     className={styles.callbackBtn}
+                    style={{ flex: 1, justifyContent: 'center', backgroundColor: '#0284c7' }}
+                    onClick={() => {
+                      const phoneToCall = selectedCallReview.phone || '+917204104491';
+                      setSelectedCallReview(null);
+                      startCall({
+                        name: selectedCallReview.name,
+                        phone: phoneToCall,
+                        mode: 'EXOTEL_REAL'
+                      });
+                    }}
+                    title={`Call ${selectedCallReview.name} via Exotel Telephony`}
+                  >
+                    <Phone size={14} />
+                    <span>Call via Exotel (PSTN)</span>
+                  </button>
+                  <button
+                    className={styles.callbackBtn}
                     style={{ flex: 1, justifyContent: 'center' }}
                     onClick={() => {
                       const phoneToCall = selectedCallReview.phone || '+91 72041 04491';
@@ -636,7 +714,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     title={`Call ${selectedCallReview.name} with AI voice assistant`}
                   >
                     <PhoneCall size={14} />
-                    <span>Call {selectedCallReview.name} (In-App)</span>
+                    <span>In-App AI Call</span>
                   </button>
                   <ClickToCallButton
                     phone={selectedCallReview.phone}

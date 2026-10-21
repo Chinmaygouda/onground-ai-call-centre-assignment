@@ -124,9 +124,9 @@ async function runSuite() {
   assert(resLong.isValid === false, 'Flags number with >15 digits as invalid');
 
   // 3.6 Tooltip generation
-  const tooltipValid = getCallTooltip('Mukunda', '+91 72041 04491');
+  const tooltipValid = getCallTooltip('Chinmaygouda', '+91 72041 04491');
   assert(
-    tooltipValid.includes('Mukunda') && tooltipValid.includes('device dialer'),
+    tooltipValid.includes('Chinmaygouda') && tooltipValid.includes('device dialer'),
     'Generates accessible tooltip with customer name and dialer hint'
   );
 
