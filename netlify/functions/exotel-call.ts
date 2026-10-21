@@ -31,7 +31,7 @@ export const handler = async (event: any) => {
   const accountSid = process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = process.env.EXOTEL_API_KEY;
   const apiToken = process.env.EXOTEL_API_TOKEN;
-  const subdomain = process.env.EXOTEL_SUBDOMAIN || 'api.in.exotel.com';
+  const subdomain = process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
   const callerId = process.env.EXOTEL_CALLER_ID;
   const agentPhone = process.env.EXOTEL_AGENT_PHONE;
 
@@ -129,18 +129,21 @@ export const handler = async (event: any) => {
     };
   }
 
-  // 5. Connect Two Numbers API Request
+  // 5. Connect Two Numbers API Request (Official Exotel Connect Two Numbers)
   try {
-    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect.json`;
+    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
+
+    const sanitizedCallerId = callerId.trim().replace(/[\s-]/g, '');
 
     const formParams = new URLSearchParams();
     formParams.append('From', `+91${agentDigits}`);
     formParams.append('To', `+91${clientDigits}`);
-    formParams.append('CallerId', callerId.trim());
+    formParams.append('CallerId', sanitizedCallerId);
     formParams.append('CallType', 'trans');
     formParams.append('TimeLimit', '14400');
     formParams.append('TimeOut', '35');
+    formParams.append('Record', 'true');
     formParams.append('CustomField', `client=${clientName};phone=${clientDigits};app=onground_callcentre`);
 
     const response = await fetch(exotelUrl, {

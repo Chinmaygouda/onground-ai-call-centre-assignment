@@ -22,7 +22,7 @@ export const handler = async (event: any) => {
   const accountSid = process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = process.env.EXOTEL_API_KEY;
   const apiToken = process.env.EXOTEL_API_TOKEN;
-  const subdomain = process.env.EXOTEL_SUBDOMAIN || 'api.in.exotel.com';
+  const subdomain = process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
 
   if (!accountSid || !apiKey || !apiToken) {
     return {
@@ -40,7 +40,7 @@ export const handler = async (event: any) => {
   }
 
   try {
-    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/${callSid}.json`;
+    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/${callSid}`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
 
     const response = await fetch(exotelUrl, {

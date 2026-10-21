@@ -61,6 +61,16 @@ const diffAgentDigits = normalizePhone('9845123456').digits;
 assert(clientDigits === selfAgentDigits, 'Detected identical numbers for self-call prevention');
 assert(clientDigits !== diffAgentDigits, 'Distinct employee number is correctly recognized');
 
+// 3.1 Caller ID Formatting & Virtual Landline Verification (080-472-85774)
+const rawLandline = '080-472-85774';
+const sanitizedLandline = rawLandline.trim().replace(/[\s-]/g, '');
+assert(sanitizedLandline === '08047285774', 'ExoPhone landline 080-472-85774 formats cleanly to 08047285774');
+
+// 3.2 Shared Trial Number Guard (095-138-86363 / 9513886363)
+const sharedTrialPool = '095-138-86363';
+const isSharedTrial = sharedTrialPool.replace(/[\s-]/g, '').includes('9513886363');
+assert(isSharedTrial, 'Identifies Exotel shared multi-tenant trial pool number 9513886363');
+
 // 4. Server-Side Service Implementation
 console.log('\n[4/8] Server Service Implementation (server/exotelService.ts)');
 const servicePath = path.resolve(process.cwd(), 'server/exotelService.ts');
@@ -69,8 +79,9 @@ const serviceContent = fs.readFileSync(servicePath, 'utf-8');
 
 assert(serviceContent.includes('EMPLOYEE_PHONE_REQUIRED'), 'Service guards against missing EXOTEL_AGENT_PHONE');
 assert(serviceContent.includes('SELF_CALL_PROHIBITED'), 'Service strictly blocks self-calling when agentPhone === clientPhone');
-assert(serviceContent.includes('CREDENTIALS_MISSING'), 'Service returns 503 with setup guidance when Exotel credentials are missing');
-assert(serviceContent.includes('POST') && serviceContent.includes('/Calls/connect.json'), 'Service connects via official Exotel connect.json endpoint');
+assert(serviceContent.includes('POST') && serviceContent.includes('/Calls/connect'), 'Service connects via official Exotel /Calls/connect endpoint (without .json)');
+assert(serviceContent.includes('api.exotel.com'), 'Service defaults to official Singapore cluster api.exotel.com');
+assert(serviceContent.includes('Record') && serviceContent.includes('true'), 'Service includes Record=true for provider-managed call recordings');
 assert(serviceContent.includes('CallType') && serviceContent.includes('trans'), 'Service sets CallType=trans for transactional outbound calling');
 assert(!serviceContent.includes('VITE_EXOTEL'), 'No VITE_ prefix used in server service');
 

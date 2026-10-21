@@ -110,7 +110,7 @@ export async function handleExotelCallRequest(
   const accountSid = env.EXOTEL_ACCOUNT_SID || process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = env.EXOTEL_API_KEY || process.env.EXOTEL_API_KEY;
   const apiToken = env.EXOTEL_API_TOKEN || process.env.EXOTEL_API_TOKEN;
-  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || 'api.in.exotel.com';
+  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
   const callerId = env.EXOTEL_CALLER_ID || process.env.EXOTEL_CALLER_ID;
   const agentPhone = env.EXOTEL_AGENT_PHONE || process.env.EXOTEL_AGENT_PHONE;
 
@@ -196,21 +196,24 @@ export async function handleExotelCallRequest(
     return;
   }
 
-  // 5. Build Exotel Connect API Request
+  // 5. Build Exotel Connect API Request (Official Exotel Connect Two Numbers)
   try {
-    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect.json`;
+    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
+
+    const sanitizedCallerId = callerId.trim().replace(/[\s-]/g, '');
 
     const formParams = new URLSearchParams();
     formParams.append('From', agentNormalized.e164);
     formParams.append('To', clientNormalized.e164);
-    formParams.append('CallerId', callerId.trim());
+    formParams.append('CallerId', sanitizedCallerId);
     formParams.append('CallType', 'trans');
     formParams.append('TimeLimit', '14400'); // 4 hours max
     formParams.append('TimeOut', '35'); // 35 sec ring timeout
+    formParams.append('Record', 'true');
     formParams.append('CustomField', `client=${clientName};phone=${clientNormalized.digits};app=onground_callcentre`);
 
-    console.log(`[ExotelService] Dispatching Connect API call: From=${agentNormalized.e164} To=${clientNormalized.e164} CallerId=${callerId}`);
+    console.log(`[ExotelService] Dispatching Connect API call to https://${subdomain}: From=${agentNormalized.e164} To=${clientNormalized.e164} CallerId=${sanitizedCallerId}`);
 
     const response = await fetch(exotelUrl, {
       method: 'POST',
@@ -300,7 +303,7 @@ export async function handleExotelStatusRequest(
   const accountSid = env.EXOTEL_ACCOUNT_SID || process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = env.EXOTEL_API_KEY || process.env.EXOTEL_API_KEY;
   const apiToken = env.EXOTEL_API_TOKEN || process.env.EXOTEL_API_TOKEN;
-  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || 'api.in.exotel.com';
+  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
 
   if (!accountSid || !apiKey || !apiToken) {
     // If credentials are not configured, return cached callback or safe mock status
@@ -317,7 +320,7 @@ export async function handleExotelStatusRequest(
   }
 
   try {
-    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/${callSid}.json`;
+    const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/${callSid}`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
 
     const response = await fetch(exotelUrl, {
