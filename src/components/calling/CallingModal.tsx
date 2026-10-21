@@ -143,10 +143,10 @@ export const CallingModal: React.FC = () => {
               )}
 
               <div className={styles.avatarLarge}>
-                {callState.contactInitials || 'CG'}
+                {callState.contactInitials || 'DHS'}
               </div>
 
-              <h3 className={styles.contactName}>{callState.contactName || 'Chinmaygouda'}</h3>
+              <h3 className={styles.contactName}>{callState.contactName || 'Davana H S'}</h3>
               <div className={styles.contactMeta}>
                 {callState.contactPhone}
                 {callState.productInterest && ` · ${callState.productInterest}`}
@@ -173,7 +173,7 @@ export const CallingModal: React.FC = () => {
                   </span>
                   <span>──▶</span>
                   <span style={{ color: callState.exotelStatus === 'connected' ? '#34d399' : '#94a3b8', fontWeight: 600 }}>
-                    3. Chinmaygouda
+                    3. Davana H S
                   </span>
                 </div>
               )}
@@ -275,7 +275,7 @@ export const CallingModal: React.FC = () => {
                 {/* Transparent Billing Notice */}
                 {callState.mode === 'EXOTEL_REAL' && (
                   <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>
-                    Exotel Two-Legged Call · Billed to business Exotel account · Free for recipient Chinmaygouda
+                    Exotel Two-Legged Call · Billed to business Exotel account · Free for recipient Davana H S
                   </div>
                 )}
               </div>

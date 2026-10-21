@@ -26,7 +26,7 @@ export const handler = async (event: any) => {
   }
 
   const to = typeof payload.to === 'string' ? payload.to.trim() : '';
-  const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Chinmaygouda';
+  const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Davana H S';
 
   const accountSid = process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = process.env.EXOTEL_API_KEY;

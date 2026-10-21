@@ -21,7 +21,7 @@ export const FloatingActionPill: React.FC = () => {
   const handleInAppCall = () => {
     startCall({
       name: 'Arvind Rajan (Peer Tab)',
-      phone: '+91 72041 04491',
+      phone: '+91 95355 84969',
       mode: 'WEBRTC_PEER',
       value: 8490,
       product: 'Ortho GRID'
@@ -60,14 +60,14 @@ export const FloatingActionPill: React.FC = () => {
         className={styles.pillButton}
         onClick={() => {
           startCall({
-            name: 'Chinmaygouda',
-            phone: '+917204104491',
+            name: 'Davana H S',
+            phone: '+919535584969',
             mode: 'EXOTEL_REAL',
             value: 8490,
             product: 'Ortho GRID'
           });
         }}
-        title="Initiate Real Phone Call to Chinmaygouda (+917204104491) via Exotel Telephony"
+        title="Initiate Real Phone Call to Davana H S (+919535584969) via Exotel Telephony"
         style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
       >
         <Phone size={13} />
@@ -75,10 +75,10 @@ export const FloatingActionPill: React.FC = () => {
       </button>
 
       <a
-        href="tel:+917204104491"
+        href="tel:+919535584969"
         className={styles.pillButton}
-        title="Call client Chinmaygouda at +91 72041 04491 (opens device dialer)"
-        aria-label="Call Chinmaygouda at +91 72041 04491 using device dialer"
+        title="Call client Davana H S at +91 95355 84969 (opens device dialer)"
+        aria-label="Call Davana H S at +91 95355 84969 using device dialer"
       >
         <Phone size={13} />
         <span>Phone call</span>
