@@ -686,7 +686,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     className={styles.callbackBtn}
                     style={{ flex: 1, justifyContent: 'center', backgroundColor: '#0284c7' }}
                     onClick={() => {
-                      const phoneToCall = selectedCallReview.phone || '+919535584969';
+                      const phoneToCall = selectedCallReview.phone || '+917338626120';
                       setSelectedCallReview(null);
                       startCall({
                         name: selectedCallReview.name,
@@ -703,7 +703,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     className={styles.callbackBtn}
                     style={{ flex: 1, justifyContent: 'center' }}
                     onClick={() => {
-                      const phoneToCall = selectedCallReview.phone || '+91 95355 84969';
+                      const phoneToCall = selectedCallReview.phone || '+91 73386 26120';
                       setSelectedCallReview(null);
                       startCall({
                         name: selectedCallReview.name,

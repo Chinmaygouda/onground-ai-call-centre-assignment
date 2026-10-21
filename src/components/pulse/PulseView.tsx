@@ -128,9 +128,9 @@ export const PulseView: React.FC = () => {
       setAvaniAnswer(
         'AvaniBot Attach Brief: Your current attach rate is 24% (Target: 30%). Best practice is bundling the Bamboo Waterproof Mattress Protector (₹2,499) with Ortho GRID mattresses for 20% combo savings.'
       );
-    } else if (query.includes('davana') || query.includes('mukunda') || query.includes('faizan') || query.includes('lead')) {
+    } else if (query.includes('ashray') || query.includes('mukunda') || query.includes('faizan') || query.includes('lead')) {
       setAvaniAnswer(
-        'AvaniBot Lead Brief: Davana H S visited Koramangala store yesterday and has an 87% ICP Fit score. Faizan A. requested an Ortho Queen quote and has ₹24,990 value at stake with 2h SLA.'
+        'AvaniBot Lead Brief: Ashray K visited Koramangala store yesterday and has an 87% ICP Fit score. Faizan A. requested an Ortho Queen quote and has ₹24,990 value at stake with 2h SLA.'
       );
     } else {
       setAvaniAnswer(
@@ -427,7 +427,7 @@ export const PulseView: React.FC = () => {
                     KUDOS · 3 NEW TODAY
                   </div>
                   <div className={styles.kudosQuote}>
-                    &ldquo;Great work with Davana H S — closed that objection beautifully!&rdquo; ·
+                    &ldquo;Great work with Ashray K — closed that objection beautifully!&rdquo; ·
                     Sunita Rao
                   </div>
                 </div>

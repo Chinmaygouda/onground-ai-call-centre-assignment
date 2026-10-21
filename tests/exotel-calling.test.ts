@@ -21,50 +21,50 @@ console.log(' EXOTEL REAL TELEPHONY INTEGRATION & SECURITY AUDIT  ');
 console.log('======================================================');
 
 // 1. Phone Normalization & Formatting
-console.log('\n[1/8] Phone Normalization & Formatting (Davana H S: +919535584969)');
-const phoneTest1 = normalizePhone('+919535584969');
-assert(phoneTest1.isValid, 'Normalized +919535584969 is valid');
-assert(phoneTest1.digits === '9535584969', 'Normalized digits are 9535584969');
-assert(phoneTest1.e164 === '+919535584969', 'Normalized e164 is +919535584969');
-assert(phoneTest1.national === '09535584969', 'Normalized national is 09535584969');
+console.log('\n[1/8] Phone Normalization & Formatting (Ashray K: +917338626120)');
+const phoneTest1 = normalizePhone('+917338626120');
+assert(phoneTest1.isValid, 'Normalized +917338626120 is valid');
+assert(phoneTest1.digits === '7338626120', 'Normalized digits are 7338626120');
+assert(phoneTest1.e164 === '+917338626120', 'Normalized e164 is +917338626120');
+assert(phoneTest1.national === '07338626120', 'Normalized national is 07338626120');
 
-const phoneTest2 = normalizePhone('9535584969');
-assert(phoneTest2.isValid && phoneTest2.e164 === '+919535584969', '10-digit number 9535584969 normalizes to +919535584969');
+const phoneTest2 = normalizePhone('7338626120');
+assert(phoneTest2.isValid && phoneTest2.e164 === '+917338626120', '10-digit number 7338626120 normalizes to +917338626120');
 
-const phoneTest3 = normalizePhone('09535584969');
-assert(phoneTest3.isValid && phoneTest3.e164 === '+919535584969', '0-prefixed 09535584969 normalizes to +919535584969');
+const phoneTest3 = normalizePhone('07338626120');
+assert(phoneTest3.isValid && phoneTest3.e164 === '+917338626120', '0-prefixed 07338626120 normalizes to +917338626120');
 
 const phoneTestInvalid = normalizePhone('12345');
 assert(!phoneTestInvalid.isValid, 'Short invalid number is rejected');
 
 // 2. Client Identity Integrity
-console.log('\n[2/8] Client Identity Integrity (Davana H S)');
+console.log('\n[2/8] Client Identity Integrity (Ashray K)');
 const primaryLead = mockLeads[0];
-assert(primaryLead.name === 'Davana H S', `Primary lead name is "Davana H S" (got: "${primaryLead.name}")`);
-assert(primaryLead.phone.includes('95355 84969') || primaryLead.phone.includes('9535584969'), `Primary lead phone is 9535584969`);
+assert(primaryLead.name === 'Ashray K', `Primary lead name is "Ashray K" (got: "${primaryLead.name}")`);
+assert(primaryLead.phone.includes('73386 26120') || primaryLead.phone.includes('7338626120'), `Primary lead phone is 7338626120`);
 
-const davanaMissed = mockMissedCalls.find((c) => c.name === 'Davana H S');
-assert(Boolean(davanaMissed), 'Davana H S exists in mockMissedCalls');
-assert(davanaMissed?.isDemoRecord === true, 'Davana H S missed call is explicitly marked with isDemoRecord: true');
-assert(davanaMissed?.provider === 'demo', 'Davana H S missed call provider is "demo" (transparent demonstration labeling)');
+const ashrayMissed = mockMissedCalls.find((c) => c.name === 'Ashray K');
+assert(Boolean(ashrayMissed), 'Ashray K exists in mockMissedCalls');
+assert(ashrayMissed?.isDemoRecord === true, 'Ashray K missed call is explicitly marked with isDemoRecord: true');
+assert(ashrayMissed?.provider === 'demo', 'Ashray K missed call provider is "demo" (transparent demonstration labeling)');
 
-const davanaRecent = mockRecentCalls.find((c) => c.name === 'Davana H S');
-assert(Boolean(davanaRecent), 'Davana H S exists in mockRecentCalls');
-assert(davanaRecent?.isDemoRecord === true, 'Davana H S recent call is explicitly marked with isDemoRecord: true');
+const ashrayRecent = mockRecentCalls.find((c) => c.name === 'Ashray K');
+assert(Boolean(ashrayRecent), 'Ashray K exists in mockRecentCalls');
+assert(ashrayRecent?.isDemoRecord === true, 'Ashray K recent call is explicitly marked with isDemoRecord: true');
 
 // 3. Employee Phone Guard & Self-Call Prevention Logic
 console.log('\n[3/8] Self-Call Prevention & Employee Phone Guards');
-const clientDigits = normalizePhone('+919535584969').digits;
-const selfAgentDigits = normalizePhone('9535584969').digits;
+const clientDigits = normalizePhone('+917338626120').digits;
+const selfAgentDigits = normalizePhone('7338626120').digits;
 const diffAgentDigits = normalizePhone('9845123456').digits;
 
 assert(clientDigits === selfAgentDigits, 'Detected identical numbers for self-call prevention');
 assert(clientDigits !== diffAgentDigits, 'Distinct employee number is correctly recognized');
 
-// 3.1 Caller ID Formatting & Virtual Landline Verification (080-472-85774)
-const rawLandline = '080-472-85774';
+// 3.1 Caller ID Formatting & Virtual Landline Verification (Mock test number)
+const rawLandline = '080-555-0199';
 const sanitizedLandline = rawLandline.trim().replace(/[\s-]/g, '');
-assert(sanitizedLandline === '08047285774', 'ExoPhone landline 080-472-85774 formats cleanly to 08047285774');
+assert(sanitizedLandline === '0805550199', 'ExoPhone landline 080-555-0199 formats cleanly to 0805550199');
 
 // 3.2 Shared Trial Number Guard (095-138-86363 / 9513886363)
 const sharedTrialPool = '095-138-86363';

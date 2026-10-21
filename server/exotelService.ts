@@ -105,7 +105,7 @@ export async function handleExotelCallRequest(
 
   const payload = await parseJsonBody(req);
   const to = typeof payload.to === 'string' ? payload.to.trim() : '';
-  const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Davana H S';
+  const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Ashray K';
 
   const accountSid = env.EXOTEL_ACCOUNT_SID || process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = env.EXOTEL_API_KEY || process.env.EXOTEL_API_KEY;
@@ -144,7 +144,7 @@ export async function handleExotelCallRequest(
     res.end(JSON.stringify({
       success: false,
       error: 'INVALID_CLIENT_PHONE',
-      message: `Invalid client phone number: "${to}". Must be a valid 10-digit Indian mobile number (e.g. +919535584969).`
+      message: `Invalid client phone number: "${to}". Must be a valid 10-digit Indian mobile number (e.g. +917338626120).`
     }));
     return;
   }

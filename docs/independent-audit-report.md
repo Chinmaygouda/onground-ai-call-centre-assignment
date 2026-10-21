@@ -140,8 +140,8 @@ All views were rendered in Google Chrome at identical dimensions (1354×900) to 
 
 ### Modality C: Telephone Dialing (`Click-to-Dial`)
 - **Status**: `VERIFIED`
-- **Mechanism**: Standards-compliant `tel:` protocol URI links using selected demo number `+91 95355 84969` (`tel:+919535584969`).
-- **Customer Numbers Audited**: Demo customer records use the designated demo number `+91 95355 84969` and sequential fictitious test numbers. The company founder contact (+91 7982015371) is **not** used as a customer number.
+- **Mechanism**: Standards-compliant `tel:` protocol URI links using selected demo number `+91 73386 26120` (`tel:+917338626120`).
+- **Customer Numbers Audited**: Demo customer records use the designated demo number `+91 73386 26120` and sequential fictitious test numbers. The company founder contact (+91 7982015371) is **not** used as a customer number.
 - **Transparency Finding**: `tel:` links hand off call routing to the user's operating system or mobile dialer application; they do not establish an in-browser audio channel.
 
 ---

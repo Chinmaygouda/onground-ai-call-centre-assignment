@@ -65,7 +65,7 @@ Set the following in **Site settings > Environment variables** in your Netlify d
 - `EXOTEL_API_KEY`: *(Required for real PSTN calling)* Your Exotel API Key.
 - `EXOTEL_API_TOKEN`: *(Required for real PSTN calling)* Your Exotel API Token.
 - `EXOTEL_CALLER_ID`: *(Required for real PSTN calling)* Your Exotel Virtual Number (ExoPhone).
-- `EXOTEL_AGENT_PHONE`: *(Required for real PSTN calling)* The frontline employee's physical telephone number (e.g. `+919876543210`). Must be distinct from client Davana H S (`+919535584969`).
+- `EXOTEL_AGENT_PHONE`: *(Required for real PSTN calling)* The frontline employee's physical telephone number (e.g. `+919876543210`). Must be distinct from client Ashray K (`+917338626120`).
 - `EXOTEL_SUBDOMAIN`: *(Optional)* API cluster domain, defaults to `api.in.exotel.com`.
 
 #### Netlify Serverless Functions (`netlify/functions/`)
@@ -73,7 +73,7 @@ Set the following in **Site settings > Environment variables** in your Netlify d
 - `gemini-status.ts`: Returns live backend readiness and configuration diagnostics.
 - `gemini-models.ts`: Performs dynamic model discovery and access tier verification.
 - `gemini-query.ts`: Handles grounded tool-calling queries with multi-turn conversation memory and automatic model fallback.
-- `exotel-call.ts`: Securely initiates outbound PSTN call connecting employee and client Davana H S.
+- `exotel-call.ts`: Securely initiates outbound PSTN call connecting employee and client Ashray K.
 - `exotel-status.ts`: Securely queries Exotel call progression, duration, and provider audio recording.
 - `exotel-callback.ts`: Receives genuine provider terminal webhook events.
 
@@ -97,7 +97,7 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
 - **Media Streaming**: Enables real-time browser calling across two browser tabs using native browser media APIs and local signaling.
 
 ### Engine 3: Click-to-Dial Phone Protocol
-- Integrated throughout customer telephone links with the selected demo phone number `+91 95355 84969` (`tel:+919535584969`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
+- Integrated throughout customer telephone links with the selected demo phone number `+91 73386 26120` (`tel:+917338626120`). *Note: This opens the host operating system's telephony dialer (FaceTime, Skype, Android Phone) and is a click-to-dial integration, distinct from an in-browser media stream.*
 
 ### Engine 4 (Mode 3): Gemini Live Voice Assistant with Synchronized Business Data
 - **Real-Time Multimodal Voice AI**: Connects to the official **Gemini Live API** (`gemini-3.8-live`, with dynamic server model discovery and automatic fallback chain to `gemini-3.1-flash-live-preview` and `gemini-2.5-flash-native-audio-preview-12-2025`) over a low-latency bidirectional WebSocket connection.
@@ -122,13 +122,13 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
     - Shared singleton `businessDataProvider` invalidates caches on price mutations.
     - Automatic semantic version increments (e.g., `2026.10.1` -> `2026.10.2`) with UTC audit timestamps.
 ### Engine 5: Real Telephone Network Calling via Exotel Telephony API (`PSTN Outbound`)
-- **Direct Cellular Calling to Client Davana H S (`+919535584969`)**: Triggers an authentic telephone call over the public switched telephone network (PSTN) using the official Exotel Voice Connect API (`POST /v1/Accounts/{account_sid}/Calls/connect.json`).
+- **Direct Cellular Calling to Client Ashray K (`+917338626120`)**: Triggers an authentic telephone call over the public switched telephone network (PSTN) using the official Exotel Voice Connect API (`POST /v1/Accounts/{account_sid}/Calls/connect.json`).
 - **Two-Legged Outbound Workflow**:
   1. **Leg A**: Exotel dials the frontline employee's physical mobile device (`EXOTEL_AGENT_PHONE`).
-  2. **Leg B**: Once the employee answers, Exotel dials the client **Davana H S** at `+919535584969` through the configured virtual ExoPhone (`EXOTEL_CALLER_ID`) and bridges the audio.
+  2. **Leg B**: Once the employee answers, Exotel dials the client **Ashray K** at `+917338626120` through the configured virtual ExoPhone (`EXOTEL_CALLER_ID`) and bridges the audio.
 - **Telecom Regulatory Reality & Billing Integrity**:
   - **Account Billed**: The business's Exotel account pays for both legs (Leg A and Leg B) from its account balance/credits.
-  - **Recipient is Free**: Under Indian Telecom Regulatory Authority (TRAI) Calling Party Pays (CPP) rules, mobile subscribers are never charged for receiving incoming calls. Davana H S is not charged.
+  - **Recipient is Free**: Under Indian Telecom Regulatory Authority (TRAI) Calling Party Pays (CPP) rules, mobile subscribers are never charged for receiving incoming calls. Ashray K is not charged.
   - **No Collect Calling**: Cellular reverse-charge or collect-calling does not exist in Indian mobile telecommunications. The application does not fabricate or claim that the client pays for the call.
 - **Strict Security & Zero Secrets in Client**:
   - `EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_CALLER_ID`, and `EXOTEL_AGENT_PHONE` reside exclusively on the server (`server/exotelService.ts` in Vite dev mode, `netlify/functions/exotel-call.ts` and `exotel-status.ts` on Netlify).
@@ -300,7 +300,7 @@ As instructed by the assignment ground rules:
   `callcentre_walkthrough_1792430473274.webp`
 - **Interactive Tour Highlights (under 2 minutes)**:
   1. **Dashboard Overview**: KPI cards, Today's Progress, 7-day rectangular bar charts.
-  2. **Leads Modal**: Triggered from "Follow up with Davana H S", carousel navigation (Lead 1 to 2), expandable buying signals.
+  2. **Leads Modal**: Triggered from "Follow up with Ashray K", carousel navigation (Lead 1 to 2), expandable buying signals.
   3. **Voice AI Calling Engine**: Initiating an interactive call, live audio waveform visualizer, Speech-to-Text customer dialogue.
   4. **Planner Flow**: Calls to Make pagination, Incoming Missed Calls with ₹81,860 stake, Recent call SOP review drawer.
   5. **Calendar Navigation**: October 2026 month view, today highlight (Oct 9th), month switcher.

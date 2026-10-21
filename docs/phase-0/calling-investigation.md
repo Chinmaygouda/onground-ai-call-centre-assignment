@@ -47,7 +47,7 @@ To satisfy all review requirements with zero reviewer friction, our calling engi
   6. Real bidirectional audio is streamed between the two tabs. Muting on Tab A genuinely mutes the stream received in Tab B.
 
 #### Mode 3: Direct Telephone Network Click-to-Dial
-- For real phone calls, clicking `[Phone call]` triggers the native `tel:` protocol URI (`tel:+919535584969`), seamlessly bridging the call-centre CRM to the agent's mobile phone or desktop softphone.
+- For real phone calls, clicking `[Phone call]` triggers the native `tel:` protocol URI (`tel:+917338626120`), seamlessly bridging the call-centre CRM to the agent's mobile phone or desktop softphone.
 
 ---
 

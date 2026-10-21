@@ -104,7 +104,7 @@ export const DailyBriefModal: React.FC = () => {
                   <span className={styles.badgeAmber}>SLA &lt; 2h</span>
                 </div>
                 <p className={styles.itemDesc}>
-                  Davana H S (87% ICP) and Ritu S. (94% ICP) visited store yesterday.
+                  Ashray K (87% ICP) and Ritu S. (94% ICP) visited store yesterday.
                 </p>
                 <button className={styles.actionBtn} onClick={handleGoLeads}>
                   <span>Review Lead Details</span>
@@ -141,7 +141,7 @@ export const DailyBriefModal: React.FC = () => {
                   TEAM RECOGNITION
                 </div>
                 <div style={{ fontSize: '12px', color: '#78350f', fontStyle: 'italic' }}>
-                  &ldquo;Great work with Davana H S — closed that objection beautifully!&rdquo; · Sunita Rao
+                  &ldquo;Great work with Ashray K — closed that objection beautifully!&rdquo; · Sunita Rao
                 </div>
               </div>
             </div>

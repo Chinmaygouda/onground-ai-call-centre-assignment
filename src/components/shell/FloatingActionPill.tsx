@@ -60,14 +60,14 @@ export const FloatingActionPill: React.FC = () => {
         className={styles.pillButton}
         onClick={() => {
           startCall({
-            name: 'Davana H S',
-            phone: '+919535584969',
+            name: 'Ashray K',
+            phone: '+917338626120',
             mode: 'EXOTEL_REAL',
             value: 8490,
             product: 'Ortho GRID'
           });
         }}
-        title="Initiate Real Phone Call to Davana H S (+919535584969) via Exotel Telephony"
+        title="Initiate Real Phone Call to Ashray K (+917338626120) via Exotel Telephony"
         style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
       >
         <Phone size={13} />
@@ -75,10 +75,10 @@ export const FloatingActionPill: React.FC = () => {
       </button>
 
       <a
-        href="tel:+919535584969"
+        href="tel:+917338626120"
         className={styles.pillButton}
-        title="Call client Davana H S at +91 95355 84969 (opens device dialer)"
-        aria-label="Call Davana H S at +91 95355 84969 using device dialer"
+        title="Call client Ashray K at +91 73386 26120 (opens device dialer)"
+        aria-label="Call Ashray K at +91 73386 26120 using device dialer"
       >
         <Phone size={13} />
         <span>Phone call</span>

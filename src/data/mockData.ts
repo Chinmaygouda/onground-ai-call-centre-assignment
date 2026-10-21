@@ -25,8 +25,8 @@ export const mockAgent: AgentProfile = {
 export const mockLeads: Lead[] = [
   {
     id: 'lead-1',
-    name: 'Davana H S',
-    initials: 'DHS',
+    name: 'Ashray K',
+    initials: 'AK',
     product: 'Ortho GRID',
     price: 8490,
     attractivenessScore: 90,
@@ -35,7 +35,7 @@ export const mockLeads: Lead[] = [
     slaLeft: '2h left',
     status: 'OPEN',
     quoteTag: 'High Intent · Ready for Exotel Call',
-    phone: '+91 95355 84969',
+    phone: '+91 73386 26120',
     signals: {
       financing: 'Asked specifically about EMI options on the Ortho GRID — budget is a live concern, not a blocker',
       quotation: 'Compared pricing with a competitor before reaching out — price-anchored, expects a competitive number',
@@ -127,13 +127,13 @@ export const mockLeads: Lead[] = [
 
 export const mockMissedCalls: MissedCall[] = [
   {
-    id: 'missed-davana',
-    name: 'Davana H S',
-    initials: 'DHS',
+    id: 'missed-ashray',
+    name: 'Ashray K',
+    initials: 'AK',
     missedText: 'Missed Today 11:45 AM · Demonstration Record',
     tag: 'Historical Demo Record',
     expectedValue: 34990,
-    phone: '+91 95355 84969',
+    phone: '+91 73386 26120',
     isResolved: false,
     provider: 'demo',
     isDemoRecord: true
@@ -193,12 +193,12 @@ export const mockMissedCalls: MissedCall[] = [
 export const mockRecentCalls: RecentCall[] = [
   {
     id: 'rec-1',
-    name: 'Davana H S',
-    initials: 'DHS',
+    name: 'Ashray K',
+    initials: 'AK',
     timeText: '10:42 AM · 4m 12s',
     duration: '4m 12s',
     type: 'inbound',
-    phone: '+91 95355 84969',
+    phone: '+91 73386 26120',
     sopScore: 92,
     greetingPassed: true,
     provider: 'demo',
@@ -206,9 +206,9 @@ export const mockRecentCalls: RecentCall[] = [
     notes: 'Demonstration Record: Pricing query for Ortho GRID 100-night trial.',
     transcript: [
       { speaker: 'Arvind', text: 'Good morning! Welcome to The Sleep Company. My name is Arvind Rajan, how may I assist your sleep comfort today?', time: '0:05' },
-      { speaker: 'Davana H S', text: 'Hi Arvind, I visited the Koramangala store yesterday and was looking at the Ortho GRID mattress.', time: '0:22' },
-      { speaker: 'Arvind', text: 'Excellent choice Ms. Davana H S! The patented SmartGRID technology provides targeted orthopedic support without trapping heat.', time: '0:45' },
-      { speaker: 'Davana H S', text: 'What EMI options do you provide for the King size?', time: '1:15' },
+      { speaker: 'Ashray K', text: 'Hi Arvind, I visited the Koramangala store yesterday and was looking at the Ortho GRID mattress.', time: '0:22' },
+      { speaker: 'Arvind', text: 'Excellent choice Mr. Ashray K! The patented SmartGRID technology provides targeted orthopedic support without trapping heat.', time: '0:45' },
+      { speaker: 'Ashray K', text: 'What EMI options do you provide for the King size?', time: '1:15' },
       { speaker: 'Arvind', text: 'We offer 0% no-cost EMI across all major credit cards, starting from just ₹1,415 per month with a 100-night risk-free home trial.', time: '1:40' }
     ]
   },
@@ -474,7 +474,7 @@ export const mockNotifications: ShiftNotification[] = [
   {
     id: 'notif-3',
     title: 'Hot Lead SLA Warning',
-    description: 'Davana H S (₹8,490 Ortho GRID) SLA expires in 2 hours.',
+    description: 'Ashray K (₹8,490 Ortho GRID) SLA expires in 2 hours.',
     timestamp: '45m ago',
     type: 'lead',
     read: false,
@@ -696,7 +696,7 @@ export const mockChatMessages: ChatMessage[] = [
     initials: 'CA',
     senderRole: 'bot',
     timestamp: '1:00pm',
-    content: '🎯 HOT LEADS: Davana H S (Ortho GRID) and Ritu S. (Smart Luxe) have intent scores above 90. Call window recommended now.',
+    content: '🎯 HOT LEADS: Ashray K (Ortho GRID) and Ritu S. (Smart Luxe) have intent scores above 90. Call window recommended now.',
     isAgent: false
   },
   {
@@ -708,7 +708,7 @@ export const mockChatMessages: ChatMessage[] = [
     initials: 'MD',
     senderRole: 'manager',
     timestamp: '1:10pm',
-    content: 'Davana H S visited the Koramangala store yesterday. Emphasize that in-store discounts can be matched immediately over the phone.',
+    content: 'Ashray K visited the Koramangala store yesterday. Emphasize that in-store discounts can be matched immediately over the phone.',
     isAgent: false
   },
 

@@ -48,10 +48,10 @@ async function runSuite() {
   console.log(`${BOLD}[1/5] Phone Normalization & tel: URI Generation${RESET}`);
 
   // 1.1 Indian number with +91 and spaces
-  const res1 = normalizePhoneNumber('+91 95355 84969');
+  const res1 = normalizePhoneNumber('+91 73386 26120');
   assert(res1.isValid === true, 'Validates Indian number with spaces and +91');
-  assert(res1.telUri === 'tel:+919535584969', 'Generates correct tel:+919535584969 URI');
-  assert(res1.normalized === '+919535584969', 'Normalizes digits preserving +91 prefix');
+  assert(res1.telUri === 'tel:+917338626120', 'Generates correct tel:+917338626120 URI');
+  assert(res1.normalized === '+917338626120', 'Normalizes digits preserving +91 prefix');
 
   // 1.2 Indian 10-digit mobile number without +91 (starts with 6-9)
   const res2 = normalizePhoneNumber('9876543210');
@@ -73,17 +73,17 @@ async function runSuite() {
   assert(res00.telUri === 'tel:+442079460912', 'Converts 00 to standard + prefix in tel: URI');
 
   // 1.5 Indian number with 91 prefix without plus (12 digits)
-  const res12 = normalizePhoneNumber('919535584969');
+  const res12 = normalizePhoneNumber('917338626120');
   assert(res12.isValid === true, 'Validates 12-digit Indian number starting with 91');
-  assert(res12.telUri === 'tel:+919535584969', 'Normalizes 12-digit 91 number to +91');
+  assert(res12.telUri === 'tel:+917338626120', 'Normalizes 12-digit 91 number to +91');
 
   // Section 2: Extension Handling & Ambiguity Safety
   console.log(`\n${BOLD}[2/5] Extension Handling & Ambiguity Safety${RESET}`);
 
   // 2.1 Extension formats
-  const resExt1 = normalizePhoneNumber('+91 95355 84969 ext 104');
+  const resExt1 = normalizePhoneNumber('+91 73386 26120 ext 104');
   assert(resExt1.isValid === true, 'Validates phone with "ext 104"');
-  assert(resExt1.telUri === 'tel:+919535584969;ext=104', 'Encodes RFC 3966 extension (;ext=104)');
+  assert(resExt1.telUri === 'tel:+917338626120;ext=104', 'Encodes RFC 3966 extension (;ext=104)');
 
   const resExt2 = normalizePhoneNumber('+91 98450 11223 x502');
   assert(resExt2.isValid === true, 'Validates phone with "x502"');
@@ -124,9 +124,9 @@ async function runSuite() {
   assert(resLong.isValid === false, 'Flags number with >15 digits as invalid');
 
   // 3.6 Tooltip generation
-  const tooltipValid = getCallTooltip('Davana H S', '+91 95355 84969');
+  const tooltipValid = getCallTooltip('Ashray K', '+91 73386 26120');
   assert(
-    tooltipValid.includes('Davana H S') && tooltipValid.includes('device dialer'),
+    tooltipValid.includes('Ashray K') && tooltipValid.includes('device dialer'),
     'Generates accessible tooltip with customer name and dialer hint'
   );
 
@@ -139,13 +139,13 @@ async function runSuite() {
   // Section 4: Formatting Utility
   console.log(`\n${BOLD}[4/5] Formatting Utility${RESET}`);
 
-  const fmtIndia = formatPhoneNumber('+919535584969');
-  assert(fmtIndia === '+91 95355 84969', 'Formats Indian number as +91 XXXXX XXXXX');
+  const fmtIndia = formatPhoneNumber('+917338626120');
+  assert(fmtIndia === '+91 73386 26120', 'Formats Indian number as +91 XXXXX XXXXX');
 
   const fmtUS = formatPhoneNumber('+14155552671');
   assert(fmtUS === '+1 (415) 555-2671', 'Formats US number as +1 (XXX) XXX-XXXX');
 
-  const fmtExt = formatPhoneNumber('+919535584969', '102');
+  const fmtExt = formatPhoneNumber('+917338626120', '102');
   assert(fmtExt.includes('ext. 102'), 'Appends extension to display format');
 
   // Section 5: Integration Across Application Screens
@@ -205,9 +205,9 @@ async function runSuite() {
     'utf-8'
   );
   assert(
-    floatingPillSrc.includes('href="tel:+919535584969"') &&
+    floatingPillSrc.includes('href="tel:+917338626120"') &&
       floatingPillSrc.includes('Phone call'),
-    'FloatingActionPill: "Phone call" triggers native tel:+919535584969 anchor without fake in-app modal'
+    'FloatingActionPill: "Phone call" triggers native tel:+917338626120 anchor without fake in-app modal'
   );
 
   // 5.5 CallingContext separation

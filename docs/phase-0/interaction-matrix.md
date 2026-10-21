@@ -13,7 +13,7 @@
 | **App Shell** | Plan Submenu | Click `Plan` | Toggles expanded submenu showing `Calls to make`, `Incoming`, `Recent`, `Practise a call` | Updates `isPlanSubmenuOpen` | Preserves last active sub-route |
 | **App Shell** | Floating `[DEMO]` Button | Click | Opens demo selector or cycles active demo scenario (Incoming call, Fresh lead, Review mode) | Updates `demoScenario` state | Original HTML script missing; provide interactive demo mode |
 | **App Shell** | Floating `[In-app call]` | Click | Opens Call Dialer Modal in DIALING state | Initiates `CallingContext.startCall()` | Prompts microphone access |
-| **App Shell** | Floating `[Phone call]` | Click | Opens phone network dialer with formatted `tel:+919535584969` | Opens OS default handler / telephone dialer | Graceful fallback if device lacks telephony |
+| **App Shell** | Floating `[Phone call]` | Click | Opens phone network dialer with formatted `tel:+917338626120` | Opens OS default handler / telephone dialer | Graceful fallback if device lacks telephony |
 | **Dashboard** | My Tasks: "2 callbacks" | Click | Opens Leads Modal focused on Lead 1 (Mukunda) | Sets `isLeadsModalOpen = true`, `activeLeadIndex = 0` | Explicitly confirmed in assignment PDF |
 | **Dashboard** | My Tasks: "2 hot leads" | Click | Opens Leads Modal focused on Lead 2 (Ritu S.) | Sets `isLeadsModalOpen = true`, `activeLeadIndex = 1` | Matches CRM lead priority flow |
 | **Dashboard** | My Tasks: "1 outcome" | Click | Opens Call Outcome Logging Drawer | Sets `isOutcomeDrawerOpen = true` | SOP logging workflow |
