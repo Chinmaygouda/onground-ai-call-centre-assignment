@@ -473,8 +473,22 @@ Customer Profile:
  * Attaches the dedicated Exotel Voicebot WebSocket Server to an existing HTTP server
  */
 export function attachExotelVoiceServer(server: HttpServer, path: string = '/exotel-voicebot'): WebSocketServer {
-  const wss = new WebSocketServer({ server, path });
+  const wss = new WebSocketServer({ noServer: true });
   console.log(`[ExotelVoiceServer] Attached Voicebot WebSocket handler to HTTP server on path ${path}`);
+
+  server.on('upgrade', (req: IncomingMessage, socket: any, head: Buffer) => {
+    try {
+      const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+      if (url.pathname === path) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit('connection', ws, req);
+        });
+      }
+    } catch {
+      // Ignore non-matching paths so Vite HMR can upgrade its own WebSocket connections cleanly
+    }
+  });
+
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     handleExotelVoiceWebSocket(ws, req);
   });
