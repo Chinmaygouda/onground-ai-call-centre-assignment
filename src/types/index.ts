@@ -68,8 +68,8 @@ export interface RecentCall {
   greetingPassed?: boolean;
   notes?: string;
   transcript?: { speaker: string; text: string; time: string }[];
-  provider?: 'exotel' | 'exotel_ai' | 'demo' | 'native';
-  callMode?: 'employee_pstn' | 'ai_voicebot' | 'webrtc_peer' | 'native_dialer';
+  provider?: 'exotel' | 'exotel_ai' | 'twilio' | 'demo' | 'native';
+  callMode?: 'employee_pstn' | 'ai_voicebot' | 'twilio_ai' | 'webrtc_peer' | 'native_dialer';
   isDemoRecord?: boolean;
   callSid?: string;
   recordingUrl?: string;
@@ -146,7 +146,22 @@ export interface PinnedDecision {
 }
 
 export type CallLifecycle = 'IDLE' | 'DIALING' | 'RINGING' | 'CONNECTED' | 'ENDED';
-export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE' | 'EXOTEL_REAL' | 'EXOTEL_AI';
+export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE' | 'EXOTEL_REAL' | 'EXOTEL_AI' | 'TWILIO_AI';
+
+export type TwilioCallStatus =
+  | 'initiating'
+  | 'queued'
+  | 'ringing'
+  | 'in-progress'
+  | 'customer_answered'
+  | 'ai_speaking'
+  | 'listening'
+  | 'processing'
+  | 'completed'
+  | 'busy'
+  | 'no-answer'
+  | 'failed'
+  | 'canceled';
 
 export type ExotelCallStatus =
   | 'initiating'
@@ -181,6 +196,9 @@ export interface ActiveCallState {
   exotelCallSid?: string;
   exotelStatus?: ExotelCallStatus;
   exotelCallerId?: string;
+  // Twilio Telephony metadata
+  twilioCallSid?: string;
+  twilioStatus?: TwilioCallStatus;
   recordingUrl?: string;
   providerError?: string;
   isConfigured?: boolean;

@@ -35,7 +35,7 @@ export const mockLeads: Lead[] = [
     slaLeft: '2h left',
     status: 'OPEN',
     quoteTag: 'High Intent · Ready for Exotel Call',
-    phone: '+91 73386 26120',
+    phone: '+91 72041 04491',
     signals: {
       financing: 'Asked specifically about EMI options on the Ortho GRID — budget is a live concern, not a blocker',
       quotation: 'Compared pricing with a competitor before reaching out — price-anchored, expects a competitive number',
@@ -133,7 +133,7 @@ export const mockMissedCalls: MissedCall[] = [
     missedText: 'Missed Today 11:45 AM · Demonstration Record',
     tag: 'Historical Demo Record',
     expectedValue: 34990,
-    phone: '+91 73386 26120',
+    phone: '+91 72041 04491',
     isResolved: false,
     provider: 'demo',
     isDemoRecord: true
@@ -198,7 +198,7 @@ export const mockRecentCalls: RecentCall[] = [
     timeText: '10:42 AM · 4m 12s',
     duration: '4m 12s',
     type: 'inbound',
-    phone: '+91 73386 26120',
+    phone: '+91 72041 04491',
     sopScore: 92,
     greetingPassed: true,
     provider: 'demo',

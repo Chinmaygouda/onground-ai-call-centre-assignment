@@ -78,11 +78,11 @@ export const FloatingActionPill: React.FC = () => {
       <button
         className={styles.pillButton}
         onClick={() => {
-          console.log('[FloatingActionPill] Call Using AI Agent clicked for contact: Ashray K');
+          console.log('[FloatingActionPill] Call Using AI Agent (Twilio) clicked for contact: Ashray K');
           startCall({
             name: 'Ashray K',
-            phone: '+917338626120',
-            mode: 'EXOTEL_AI',
+            phone: '+917204104491',
+            mode: 'TWILIO_AI',
             value: 8490,
             product: 'Ortho GRID',
             leadId: 'lead-1',
@@ -90,8 +90,8 @@ export const FloatingActionPill: React.FC = () => {
             notes: 'High-intent lead who visited store yesterday looking at Ortho GRID mattress.'
           });
         }}
-        title="Mode 2 (Call Using AI Agent): Exotel calls Ashray K directly, connects Gemini Live voicebot"
-        style={{ color: '#c084fc', borderColor: 'rgba(192, 132, 252, 0.4)' }}
+        title="Mode 2 (Call Using AI Agent): Twilio calls Ashray K directly, connects Gemini Text AI"
+        style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
       >
         <Bot size={13} />
         <span>Call Using AI Agent</span>

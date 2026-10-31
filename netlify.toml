@@ -42,6 +42,31 @@
   status = 200
 
 [[redirects]]
+  from = "/api/twilio/call"
+  to = "/.netlify/functions/twilio-call"
+  status = 200
+
+[[redirects]]
+  from = "/api/twilio/call-status"
+  to = "/.netlify/functions/twilio-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/twilio/voice"
+  to = "/.netlify/functions/twilio-voice"
+  status = 200
+
+[[redirects]]
+  from = "/api/twilio/ai-turn"
+  to = "/.netlify/functions/twilio-ai-turn"
+  status = 200
+
+[[redirects]]
+  from = "/api/twilio/status"
+  to = "/.netlify/functions/twilio-status"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

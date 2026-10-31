@@ -47,6 +47,22 @@ export const CallingModal: React.FC = () => {
   };
 
   const getStatusLabel = () => {
+    if (callState.mode === 'TWILIO_AI') {
+      const s = callState.twilioStatus;
+      if (s === 'initiating') return 'Initiating call...';
+      if (s === 'queued') return 'Call queued...';
+      if (s === 'ringing') return `Calling customer (${callState.contactName || 'Lead'})...`;
+      if (s === 'customer_answered') return 'Customer answered';
+      if (s === 'ai_speaking') return 'AI speaking';
+      if (s === 'listening') return 'Listening to customer';
+      if (s === 'processing') return 'Processing customer question';
+      if (s === 'completed') return 'Call completed';
+      if (s === 'busy') return 'Customer line busy';
+      if (s === 'no-answer') return 'Customer did not answer';
+      if (s === 'failed') return 'Call failed';
+      if (s === 'canceled') return 'Call canceled';
+    }
+
     if (callState.mode === 'EXOTEL_AI') {
       const s = callState.exotelStatus;
       if (s === 'initiating') return 'Initiating AI Outbound Call...';
@@ -184,6 +200,32 @@ export const CallingModal: React.FC = () => {
                 </div>
               )}
 
+              {/* Twilio Voice AI Provider Pill */}
+              {callState.mode === 'TWILIO_AI' && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  color: '#38bdf8',
+                  backgroundColor: 'rgba(14, 165, 233, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  width: 'fit-content',
+                  margin: '0 auto 12px auto'
+                }}>
+                  <ShieldCheck size={12} color="#38bdf8" />
+                  <span>Twilio Programmable Voice · Gemini Text AI (&lt;Gather&gt; / &lt;Say&gt;)</span>
+                  {callState.twilioCallSid && (
+                    <span style={{ fontFamily: 'monospace', color: '#bae6fd' }}>
+                      · SID: {callState.twilioCallSid.substring(0, 14)}...
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div className={styles.avatarLarge}>
                 {callState.contactInitials || 'AK'}
               </div>
@@ -220,7 +262,7 @@ export const CallingModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Exotel Voicebot Progression Stepper (Mode 2: Call Using AI Agent) */}
+              {/* Exotel Voicebot Progression Stepper (Mode 2: Call Using AI Agent via Exotel) */}
               {callState.mode === 'EXOTEL_AI' && (
                 <div style={{
                   display: 'flex',
@@ -249,6 +291,39 @@ export const CallingModal: React.FC = () => {
                     fontWeight: 600
                   }}>
                     3. Gemini Live Voicebot
+                  </span>
+                </div>
+              )}
+
+              {/* Twilio Voice AI Progression Stepper (Mode 2: Call Using AI Agent via Twilio) */}
+              {callState.mode === 'TWILIO_AI' && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  marginTop: '8px'
+                }}>
+                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                    1. Twilio Voice (+1 737-250-8034)
+                  </span>
+                  <span>──▶</span>
+                  <span style={{
+                    color: (callState.twilioStatus === 'queued' || callState.twilioStatus === 'ringing') ? '#fbbf24' : '#34d399',
+                    fontWeight: 600
+                  }}>
+                    2. Customer Mobile ({callState.contactPhone || 'Customer'})
+                  </span>
+                  <span>──▶</span>
+                  <span style={{
+                    color: (callState.twilioStatus === 'ai_speaking' || callState.twilioStatus === 'listening' || callState.twilioStatus === 'processing' || callState.twilioStatus === 'customer_answered')
+                      ? '#38bdf8'
+                      : '#64748b',
+                    fontWeight: 600
+                  }}>
+                    3. Gemini Text AI (&lt;Gather&gt; / &lt;Say&gt;)
                   </span>
                 </div>
               )}
@@ -309,6 +384,8 @@ export const CallingModal: React.FC = () => {
                 <span className={styles.dialogueLabel}>
                   {callState.mode === 'EXOTEL_REAL'
                     ? 'PSTN Audio Stream & Status'
+                    : callState.mode === 'TWILIO_AI'
+                    ? 'Twilio Voice AI Dialogue (<Gather> / <Say>)'
                     : callState.mode === 'EXOTEL_AI'
                     ? 'AI Voicebot & Gemini Live Stream'
                     : callState.mode === 'AI_VOICE'
@@ -320,7 +397,7 @@ export const CallingModal: React.FC = () => {
                     {callState.aiResponseText}
                   </div>
                 )}
-                {callState.mode === 'EXOTEL_AI' && callState.aiTranscript && (
+                {(callState.mode === 'EXOTEL_AI' || callState.mode === 'TWILIO_AI') && callState.aiTranscript && (
                   <div style={{
                     maxHeight: '120px',
                     overflowY: 'auto',
@@ -338,7 +415,7 @@ export const CallingModal: React.FC = () => {
                       : callState.aiTranscript.map((t) => `${t.speaker === 'ai' ? 'AI Voicebot' : 'Customer'}: ${t.text}`).join('\n')}
                   </div>
                 )}
-                {aiSpeechTranscript && callState.mode !== 'EXOTEL_AI' && (
+                {aiSpeechTranscript && callState.mode !== 'EXOTEL_AI' && callState.mode !== 'TWILIO_AI' && (
                   <div className={styles.transcriptLive}>
                     You: &ldquo;{aiSpeechTranscript}&rdquo;
                   </div>
@@ -347,13 +424,15 @@ export const CallingModal: React.FC = () => {
                   <div style={{ color: '#64748b' }}>
                     {callState.mode === 'EXOTEL_REAL'
                       ? 'Live telephone call in progress over telecom network...'
+                      : callState.mode === 'TWILIO_AI'
+                      ? 'Twilio outbound AI call in progress. Customer phone ringing directly...'
                       : callState.mode === 'EXOTEL_AI'
                       ? 'AI Outbound call in progress. Customer phone ringing directly...'
                       : 'Speak into your microphone. Voice AI agent is actively listening...'}
                   </div>
                 )}
 
-                {/* Genuine Provider Recording Link / Player (Only if returned by Exotel) */}
+                {/* Genuine Provider Recording Link / Player (Only if returned by provider) */}
                 {callState.recordingUrl && (
                   <div style={{
                     marginTop: '10px',
@@ -378,6 +457,11 @@ export const CallingModal: React.FC = () => {
                 {callState.mode === 'EXOTEL_AI' && (
                   <div style={{ fontSize: '10px', color: '#c084fc', marginTop: '6px' }}>
                     Exotel Connect Voice AI · Direct Outbound to {callState.contactPhone || 'Customer'} · WSS Audio Stream to Gemini Live · Employee Phone Bypassed
+                  </div>
+                )}
+                {callState.mode === 'TWILIO_AI' && (
+                  <div style={{ fontSize: '10px', color: '#38bdf8', marginTop: '6px' }}>
+                    Twilio Programmable Voice · Direct Outbound to {callState.contactPhone || 'Customer'} · Gemini Text AI (&lt;Gather&gt; / &lt;Say&gt;) · Employee Phone Bypassed
                   </div>
                 )}
               </div>

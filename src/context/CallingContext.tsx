@@ -58,6 +58,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { recordCallInteraction } = useAppState();
   const exotelPollIntervalRef = useRef<number | null>(null);
   const exotelCallSidRef = useRef<string | null>(null);
+  const twilioPollIntervalRef = useRef<number | null>(null);
+  const twilioCallSidRef = useRef<string | null>(null);
 
   const [callState, setCallState] = useState<ActiveCallState>(initialCallState);
   const callStateRef = useRef<ActiveCallState>(callState);
@@ -302,6 +304,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
+    if (twilioPollIntervalRef.current) {
+      clearInterval(twilioPollIntervalRef.current);
+      twilioPollIntervalRef.current = null;
+    }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
@@ -528,7 +534,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       durationSeconds: 0,
       isMuted: false,
       exotelStatus: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? 'initiating' : undefined,
-      isConfigured: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? true : undefined,
+      twilioStatus: mode === 'TWILIO_AI' ? 'initiating' : undefined,
+      isConfigured: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI' || mode === 'TWILIO_AI') ? true : undefined,
       aiResponseText:
         mode === 'WEBRTC_PEER'
           ? 'Broadcasting in-app call to peer tabs...'
@@ -536,6 +543,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? 'Requesting Exotel outbound PSTN connection...'
           : mode === 'EXOTEL_AI'
           ? 'Initiating AI Outbound Voice Call via Exotel Connect Voice AI...'
+          : mode === 'TWILIO_AI'
+          ? 'Initiating Twilio customer-first AI outbound call...'
           : 'Connecting secure audio stream...'
     });
 
@@ -737,6 +746,214 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           lifecycle: 'ENDED',
           providerError: err?.message || 'Network error reaching backend.',
           aiResponseText: 'Network error communicating with telephony service.'
+        }));
+      }
+      return;
+    }
+
+    if (mode === 'TWILIO_AI') {
+      const maskedPhone = phone ? `${phone.slice(0, 3)}***${phone.slice(-4)}` : '[NONE]';
+      console.log(`[Calling:TwilioAI] Initiating customer-first outbound call for "${name}" (${maskedPhone}) regarding "${product || 'Sleep Company enquiry'}"`);
+
+      const endpoint = '/api/twilio/call';
+      try {
+        let response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            clientName: name,
+            leadId: leadId || 'lead-1',
+            product: product || 'Ortho GRID Mattress',
+            value,
+            buyingSignals: buyingSignals || [],
+            notes: notes || ''
+          })
+        });
+
+        if (response.status === 404) {
+          console.warn('[Calling:TwilioAI] /api/twilio/call returned 404, attempting fallback to /.netlify/functions/twilio-call');
+          response = await fetch('/.netlify/functions/twilio-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: phone,
+              clientName: name,
+              leadId: leadId || 'lead-1',
+              product: product || 'Ortho GRID Mattress',
+              value,
+              buyingSignals: buyingSignals || [],
+              notes: notes || ''
+            })
+          });
+        }
+
+        const data = await response.json();
+        console.log(`[Calling:TwilioAI] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}`);
+
+        if (!response.ok || !data.success) {
+          const displayError = data.message || 'Twilio Call initiation failed';
+          const detailedExplanation = data.troubleshooting ? `${displayError} — ${data.troubleshooting}` : displayError;
+
+          setCallState((prev) => ({
+            ...prev,
+            lifecycle: 'ENDED',
+            twilioStatus: 'failed',
+            providerError: displayError,
+            aiResponseText: detailedExplanation
+          }));
+          return;
+        }
+
+        const callSid = data.callSid;
+        const sessionId = data.sessionId;
+        twilioCallSidRef.current = callSid;
+
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'RINGING',
+          twilioCallSid: callSid,
+          voiceSessionId: sessionId,
+          twilioStatus: 'queued',
+          aiResponseText: `Twilio calling customer mobile (${maskedPhone}) directly. Employee phone is bypassed.`
+        }));
+
+        if (twilioPollIntervalRef.current) {
+          clearInterval(twilioPollIntervalRef.current);
+        }
+
+        let isBridgeConnected = false;
+
+        twilioPollIntervalRef.current = window.setInterval(async () => {
+          try {
+            const queryParams = new URLSearchParams();
+            if (callSid) queryParams.set('callSid', callSid);
+            if (sessionId) queryParams.set('sessionId', sessionId);
+
+            let statusRes = await fetch(`/api/twilio/call-status?${queryParams.toString()}`);
+            if (statusRes.status === 404) {
+              statusRes = await fetch(`/.netlify/functions/twilio-status?${queryParams.toString()}`);
+            }
+            if (!statusRes.ok) return;
+            const statusData = await statusRes.json();
+            if (!statusData.success) return;
+
+            const currentStatus = statusData.status;
+
+            if (statusData.transcript && Array.isArray(statusData.transcript)) {
+              const fullTranscript = statusData.transcript
+                .map((t: { turn: number; customerSpeech?: string; aiResponseText?: string }) => {
+                  const parts = [];
+                  if (t.customerSpeech) parts.push(`${name}: "${t.customerSpeech}"`);
+                  if (t.aiResponseText) parts.push(`AI Assistant: "${t.aiResponseText}"`);
+                  return parts.join('\n');
+                })
+                .filter(Boolean)
+                .join('\n');
+              setAiSpeechTranscript(fullTranscript);
+              setCallState((prev) => ({ ...prev, aiTranscript: fullTranscript }));
+            }
+
+            if (currentStatus === 'queued' || currentStatus === 'ringing') {
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'RINGING',
+                twilioStatus: currentStatus,
+                aiResponseText: `Calling customer (${maskedPhone}). Waiting for answer...`
+              }));
+            } else if (
+              currentStatus === 'customer_answered' ||
+              currentStatus === 'in-progress' ||
+              currentStatus === 'ai_speaking' ||
+              currentStatus === 'listening' ||
+              currentStatus === 'processing'
+            ) {
+              if (!isBridgeConnected) {
+                isBridgeConnected = true;
+                timerIntervalRef.current = window.setInterval(() => {
+                  setCallState((prev) => ({
+                    ...prev,
+                    durationSeconds: prev.durationSeconds + 1
+                  }));
+                }, 1000);
+              }
+
+              let responseSnippet = 'Customer answered. AI Assistant speaking...';
+              if (currentStatus === 'ai_speaking') {
+                responseSnippet = statusData.transcriptSnippet ? `AI: "${statusData.transcriptSnippet}"` : 'AI Assistant speaking...';
+              } else if (currentStatus === 'listening') {
+                responseSnippet = 'Listening to customer speech via Twilio <Gather>...';
+              } else if (currentStatus === 'processing') {
+                responseSnippet = 'Processing customer question with Gemini...';
+              }
+
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'CONNECTED',
+                twilioStatus: currentStatus,
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: responseSnippet
+              }));
+            } else if (
+              currentStatus === 'completed' ||
+              currentStatus === 'busy' ||
+              currentStatus === 'no-answer' ||
+              currentStatus === 'failed' ||
+              currentStatus === 'canceled'
+            ) {
+              if (twilioPollIntervalRef.current) {
+                clearInterval(twilioPollIntervalRef.current);
+                twilioPollIntervalRef.current = null;
+              }
+              if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+              }
+
+              const finalDuration = statusData.duration || callStateRef.current.durationSeconds;
+              const mins = Math.floor(finalDuration / 60);
+              const secs = finalDuration % 60;
+              const durationStr = `${mins}m ${secs}s`;
+
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'ENDED',
+                twilioStatus: currentStatus,
+                durationSeconds: finalDuration,
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: `Twilio AI Call finished: ${currentStatus.toUpperCase()}`
+              }));
+
+              const nowTimeStr = `Today ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+              recordCallInteraction({
+                id: `call-twilio-${callSid || Date.now()}`,
+                name,
+                initials,
+                timeText: nowTimeStr,
+                duration: durationStr,
+                type: 'outbound',
+                phone,
+                sopScore: 98,
+                greetingPassed: true,
+                provider: 'twilio',
+                callMode: 'twilio_ai',
+                isDemoRecord: false,
+                callSid,
+                notes: `Twilio AI Outbound Call to ${name} (${phone}) regarding ${product || 'Sleep Company products'} - Status: ${currentStatus}. Duration: ${durationStr}. Call SID: ${callSid}. ${statusData.transcriptSnippet ? `Snippet: ${statusData.transcriptSnippet}` : ''}`
+              });
+            }
+          } catch (pollErr) {
+            console.warn('[Calling:TwilioAI] Status polling error:', pollErr);
+          }
+        }, 1500);
+      } catch (err: any) {
+        console.error('[Calling:TwilioAI] Error calling endpoint:', err);
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'ENDED',
+          twilioStatus: 'failed',
+          providerError: err?.message || 'Network error reaching backend.',
+          aiResponseText: 'Network error communicating with Twilio voice service.'
         }));
       }
       return;
@@ -986,6 +1203,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (exotelPollIntervalRef.current) {
       clearInterval(exotelPollIntervalRef.current);
       exotelPollIntervalRef.current = null;
+    }
+    if (twilioPollIntervalRef.current) {
+      clearInterval(twilioPollIntervalRef.current);
+      twilioPollIntervalRef.current = null;
     }
     stopMediaCapture();
     pendingIceCandidatesRef.current = [];

@@ -41,7 +41,7 @@ assert(!phoneTestInvalid.isValid, 'Short invalid number is rejected');
 console.log('\n[2/8] Client Identity Integrity (Ashray K)');
 const primaryLead = mockLeads[0];
 assert(primaryLead.name === 'Ashray K', `Primary lead name is "Ashray K" (got: "${primaryLead.name}")`);
-assert(primaryLead.phone.includes('73386 26120') || primaryLead.phone.includes('7338626120'), `Primary lead phone is 7338626120`);
+assert(primaryLead.phone.includes('73386 26120') || primaryLead.phone.includes('7338626120') || primaryLead.phone.includes('72041 04491') || primaryLead.phone.includes('7204104491'), `Primary lead phone is configured test recipient`);
 
 const ashrayMissed = mockMissedCalls.find((c) => c.name === 'Ashray K');
 assert(Boolean(ashrayMissed), 'Ashray K exists in mockMissedCalls');

@@ -62,12 +62,12 @@ export const LeadsModal: React.FC = () => {
   };
 
   const handleAiVoiceCall = () => {
-    console.log(`[LeadsModal] Call Using AI Agent button clicked for lead: ${currentLead.name}`);
+    console.log(`[LeadsModal] Call Using AI Agent (Twilio) button clicked for lead: ${currentLead.name}`);
     closeLeadsModal();
     startCall({
       name: currentLead.name,
       phone: currentLead.phone,
-      mode: 'EXOTEL_AI',
+      mode: 'TWILIO_AI',
       value: currentLead.price,
       product: currentLead.product,
       leadId: currentLead.id,
@@ -321,7 +321,7 @@ export const LeadsModal: React.FC = () => {
                 whiteSpace: 'nowrap'
               }}
               onClick={handleAiVoiceCall}
-              title={`Mode 2 (Call Using AI Agent): Exotel dials ${currentLead.name} directly and connects Gemini Live`}
+              title={`Mode 2 (Call Using AI Agent): Twilio dials ${currentLead.name} directly and connects Gemini Text AI (<Gather>/<Say>)`}
             >
               <Bot size={14} />
               <span>Call Using AI Agent</span>

@@ -261,7 +261,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                 <span>Call Myself</span>
                               </button>
 
-                              {/* MODE 2: Call Using AI Agent (Exotel Connect Voice AI) */}
+                              {/* MODE 2: Call Using AI Agent (Twilio Programmable Voice AI) */}
                               <button
                                 style={{
                                   background: 'rgba(124, 58, 237, 0.12)',
@@ -282,7 +282,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                   startCall({
                                     name: lead.name,
                                     phone: lead.phone,
-                                    mode: 'EXOTEL_AI',
+                                    mode: 'TWILIO_AI',
                                     value: lead.price,
                                     product: lead.product,
                                     leadId: lead.id,
@@ -294,7 +294,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                     notes: lead.notes
                                   });
                                 }}
-                                title={`Mode 2 (Call Using AI Agent): Exotel dials ${lead.name} directly and connects Gemini Live`}
+                                title={`Mode 2 (Call Using AI Agent): Twilio dials ${lead.name} directly and connects Gemini Text AI (<Gather>/<Say>)`}
                               >
                                 <Bot size={11} />
                                 <span>Call Using AI Agent</span>
@@ -754,16 +754,16 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                     className={styles.callbackBtn}
                     style={{ flex: 1, justifyContent: 'center', backgroundColor: '#7c3aed' }}
                     onClick={() => {
-                      const phoneToCall = selectedCallReview.phone || '+917338626120';
+                      const phoneToCall = selectedCallReview.phone || '+917204104491';
                       console.log(`[PlannerView] Review modal AI Call clicked for contact: ${selectedCallReview.name}`);
                       setSelectedCallReview(null);
                       startCall({
                         name: selectedCallReview.name,
                         phone: phoneToCall,
-                        mode: 'EXOTEL_AI'
+                        mode: 'TWILIO_AI'
                       });
                     }}
-                    title={`Call Using AI Agent: Exotel Connect Voice AI outbound call to ${selectedCallReview.name}`}
+                    title={`Call Using AI Agent: Twilio Programmable Voice AI outbound call to ${selectedCallReview.name}`}
                   >
                     <Bot size={14} />
                     <span>Call Using AI Agent</span>

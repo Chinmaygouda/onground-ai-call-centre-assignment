@@ -4,6 +4,13 @@ import { handleGeminiTokenRequest, handleGeminiStatusRequest, handleGeminiModels
 import { handleGeminiQueryRequest } from './server/geminiQueryService';
 import { handleExotelCallRequest, handleExotelStatusRequest, handleExotelCallbackRequest } from './server/exotelService';
 import { attachExotelVoiceServer } from './server/exotelVoiceServer';
+import {
+  handleTwilioCallRequest,
+  handleTwilioCallStatusQuery,
+  handleTwilioVoiceWebhook,
+  handleTwilioAiTurnWebhook,
+  handleTwilioStatusCallbackWebhook
+} from './server/twilioService';
 
 function geminiLiveServerPlugin(): Plugin {
   return {
@@ -44,6 +51,27 @@ function geminiLiveServerPlugin(): Plugin {
       server.middlewares.use('/api/exotel/callback', (req, res) => {
         const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
         handleExotelCallbackRequest(req, res, env);
+      });
+      // Twilio Telephony Endpoints
+      server.middlewares.use('/api/twilio/call', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/call-status', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioCallStatusQuery(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/voice', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioVoiceWebhook(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/ai-turn', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioAiTurnWebhook(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/status', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioStatusCallbackWebhook(req, res, env);
       });
       // Attach Exotel Voicebot WebSocket Server
       if (server.httpServer) {
@@ -86,6 +114,27 @@ function geminiLiveServerPlugin(): Plugin {
       server.middlewares.use('/api/exotel/callback', (req, res) => {
         const env = loadEnv('production', process.cwd(), '');
         handleExotelCallbackRequest(req, res, env);
+      });
+      // Twilio Telephony Endpoints (Preview)
+      server.middlewares.use('/api/twilio/call', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/call-status', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioCallStatusQuery(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/voice', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioVoiceWebhook(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/ai-turn', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioAiTurnWebhook(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/status', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioStatusCallbackWebhook(req, res, env);
       });
       // Attach Exotel Voicebot WebSocket Server (Preview)
       if (server.httpServer) {
