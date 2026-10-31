@@ -20,8 +20,8 @@
 .modalCard {
   width: 580px;
   max-width: calc(100vw - 28px);
-  height: min(780px, 94vh);
-  max-height: 94dvh;
+  height: min(780px, 90vh);
+  max-height: 90dvh;
   background: linear-gradient(180deg, #13172e 0%, #0d1122 100%);
   border-radius: 20px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
@@ -604,7 +604,7 @@
   align-items: center;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .modalOverlay {
     padding: 0;
     align-items: flex-end;
@@ -613,8 +613,17 @@
   .modalCard {
     width: 100%;
     max-width: 100%;
-    height: 94vh;
+    height: 90vh;
+    max-height: 90dvh;
     border-radius: 20px 20px 0 0;
+  }
+
+  .peerCallBanner {
+    top: auto;
+    bottom: max(16px, env(safe-area-inset-bottom, 0px) + 16px);
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
 
   .modalHeader {

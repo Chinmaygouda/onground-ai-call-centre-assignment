@@ -468,13 +468,23 @@ export class BusinessDataProvider implements IBusinessDataProvider {
   > {
     const cleanPin = (pincode || '').replace(/\D/g, '');
 
-    // If pincode is not provided or incomplete, return default free pan-India delivery details
-    if (!cleanPin || cleanPin.length !== 6) {
+    // If a specific pincode is provided but invalid (not 6 digits), reject with explicit error
+    if (pincode && cleanPin.length !== 6) {
+      const metadata = this.generateMetadata('DELIVERY-INVALID-PIN');
+      return {
+        verified: false,
+        error: 'INVALID_PINCODE',
+        metadata
+      };
+    }
+
+    // If pincode is omitted, return default free pan-India delivery details
+    if (!cleanPin) {
       const metadata = this.generateMetadata('DELIVERY-PAN-INDIA');
       return {
         verified: true,
         data: {
-          pincode: cleanPin || 'Pan-India',
+          pincode: 'Pan-India',
           deliverable: true,
           estimatedDays: 3,
           deliveryFee: 0,
