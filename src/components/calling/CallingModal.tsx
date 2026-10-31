@@ -474,7 +474,7 @@ export const CallingModal: React.FC = () => {
 
               <div className={styles.carrierNotice}>
                 {callState.mode === 'TWILIO_AI' && 'Twilio Programmable Voice · The Sleep Company Frontline Telephony'}
-                {callState.mode === 'EXOTEL_AI' && 'Exotel Voicebot · Gemini Live Telephony Bridge'}
+                {callState.mode === 'EXOTEL_AI' && 'Exotel Connect Voice AI · Gemini Live Voicebot Telephony Bridge'}
                 {callState.mode === 'EXOTEL_REAL' && 'Exotel PSTN Telecom Network · Billed to business'}
                 {callState.mode === 'AI_VOICE' && 'In-Browser Speech AI · The Sleep Company Assistant'}
                 {callState.mode === 'WEBRTC_PEER' && 'WebRTC Browser-to-Browser Audio Call'}
