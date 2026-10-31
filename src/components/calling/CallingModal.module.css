@@ -1,13 +1,15 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(8px);
+  background-color: rgba(10, 15, 29, 0.75);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   animation: fadeIn 200ms ease;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 @keyframes fadeIn {
@@ -16,14 +18,13 @@
 }
 
 .modalCard {
-  width: 440px;
-  max-width: calc(100vw - 32px);
-  max-height: 90vh;
-  max-height: 90dvh;
-  background-color: #1e1b4b;
+  width: 580px;
+  max-width: calc(100vw - 28px);
+  height: min(780px, 94vh);
+  max-height: 94dvh;
+  background: linear-gradient(180deg, #13172e 0%, #0d1122 100%);
   border-radius: 20px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -33,28 +34,38 @@
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px) scale(0.96); opacity: 0; }
+  from { transform: translateY(16px) scale(0.97); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+/* Header Area (Pinned at Top) */
 .modalHeader {
-  padding: 24px 24px 16px 24px;
-  text-align: center;
-  position: relative;
+  padding: 16px 20px 12px 20px;
+  background: rgba(19, 23, 46, 0.95);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.headerTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 8px;
 }
 
 .statusPill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 14px;
+  padding: 4px 12px;
   border-radius: 9999px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin-bottom: 16px;
 }
 
 .statusDialing {
@@ -75,120 +86,432 @@
   border: 1px solid rgba(239, 68, 68, 0.4);
 }
 
+.durationClock {
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 3px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Contact Info Row */
+.contactInfoRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .avatarLarge {
-  width: 72px;
-  height: 72px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  margin: 0 auto 12px auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   color: #ffffff;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.contactDetails {
+  flex: 1;
+  min-width: 0;
 }
 
 .contactName {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  margin-bottom: 4px;
+  margin: 0 0 2px 0;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contactMeta {
-  font-size: 13px;
+  font-size: 12px;
   color: #94a3b8;
-}
-
-.durationClock {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 600;
-  color: #38bdf8;
-  margin-top: 6px;
-}
-
-.visualizerSection {
-  padding: 16px 24px;
-  background-color: rgba(0, 0, 0, 0.2);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.waveformBars {
+.productBadge {
+  background: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.3);
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.valueBadge {
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* Mini Waveform Visualizer */
+.waveformMini {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  height: 44px;
+  height: 22px;
   width: 100%;
+  margin-top: 10px;
 }
 
 .bar {
-  width: 4px;
+  width: 3.5px;
   border-radius: 2px;
   background-color: #38bdf8;
-  transition: height 50ms ease;
+  transition: height 60ms ease;
   min-height: 4px;
 }
 
-.dialogueBox {
-  width: 100%;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: #e2e8f0;
-  max-height: 100px;
-  overflow-y: auto;
+/* Conversation Section (Flexible, Auto-scrolling) */
+.conversationSection {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 14, 27, 0.7);
+  overflow: hidden;
+  position: relative;
 }
 
-.dialogueLabel {
-  font-size: 10.5px;
+.conversationHeader {
+  padding: 8px 16px;
+  background: rgba(15, 20, 39, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.conversationTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #a78bfa;
-  margin-bottom: 4px;
-  display: block;
-}
-
-.transcriptLive {
-  font-style: italic;
   color: #cbd5e1;
 }
 
+.liveIndicatorPulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulseDot 1.5s infinite;
+}
+
+@keyframes pulseDot {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.liveStateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.stateSpeaking {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.stateListening {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.stateGenerating {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+/* Chat Messages Scroll Container */
+.messagesScrollArea {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+}
+
+.messagesScrollArea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messagesScrollArea::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.messagesScrollArea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.messagesScrollArea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* AI Message Row (Left aligned) */
+.messageRowAi {
+  display: flex;
+  align-self: flex-start;
+  max-width: 90%;
+  gap: 10px;
+  animation: fadeInBubble 200ms ease;
+}
+
+/* Customer Message Row (Right aligned) */
+.messageRowCustomer {
+  display: flex;
+  flex-direction: row-reverse;
+  align-self: flex-end;
+  max-width: 90%;
+  gap: 10px;
+  animation: fadeInBubble 200ms ease;
+}
+
+@keyframes fadeInBubble {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.avatarAi {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  border: 1.5px solid rgba(167, 139, 250, 0.4);
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.avatarCustomer {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  border: 1.5px solid rgba(56, 189, 248, 0.4);
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.bubbleWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.metaRowAi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.metaRowCustomer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.speakerLabelAi {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c084fc;
+}
+
+.speakerLabelCustomer {
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.msgTime {
+  font-size: 10px;
+  color: #64748b;
+  font-family: var(--font-mono, monospace);
+}
+
+.bubbleAi {
+  background: linear-gradient(145deg, #1e1b4b 0%, #2e1065 100%);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 16px 16px 16px 4px;
+  padding: 10px 14px;
+  color: #f8fafc;
+  font-size: 13.5px;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  word-break: break-word;
+}
+
+.bubbleAiSpeaking {
+  border-color: rgba(52, 211, 153, 0.6);
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.2);
+}
+
+.bubbleCustomer {
+  background: linear-gradient(145deg, #0c4a6e 0%, #0369a1 100%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 16px 16px 4px 16px;
+  padding: 10px 14px;
+  color: #ffffff;
+  font-size: 13.5px;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  word-break: break-word;
+}
+
+.bubbleToolsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.toolTag {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #cbd5e1;
+}
+
+.activeSpeechTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Generating / Thinking Animated Dots */
+.generatingRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 16px;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #c084fc;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typingDot:nth-child(1) { animation-delay: -0.32s; }
+.typingDot:nth-child(2) { animation-delay: -0.16s; }
+.typingDot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.emptyConversationState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #64748b;
+  text-align: center;
+  padding: 24px;
+  gap: 10px;
+}
+
+/* Call Actions Bar (Pinned at Bottom) */
 .actionsSection {
-  padding: 20px 24px 28px 24px;
+  padding: 14px 20px;
+  background: rgba(19, 23, 46, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.buttonsRow {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 20px;
+  width: 100%;
 }
 
 .actionBtn {
-  width: 52px;
-  height: 52px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 150ms ease);
   color: #ffffff;
+  cursor: pointer;
+  border: none;
 }
 
 .muteBtn {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .muteBtn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.18);
+  transform: scale(1.05);
 }
 
 .mutedActive {
@@ -198,7 +521,9 @@
 
 .endCallBtn {
   background-color: #ef4444;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+  width: 56px;
+  height: 56px;
 }
 
 .endCallBtn:hover {
@@ -207,12 +532,19 @@
 }
 
 .keypadBtn {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .keypadBtn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.18);
+  transform: scale(1.05);
+}
+
+.carrierNotice {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
 }
 
 /* Incoming Peer Call Banner */
@@ -272,23 +604,7 @@
   align-items: center;
 }
 
-@media (max-width: 640px) {
-  .peerCallBanner {
-    top: max(12px, env(safe-area-inset-top, 0px));
-    left: max(12px, env(safe-area-inset-left, 0px));
-    right: max(12px, env(safe-area-inset-right, 0px));
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .bannerActions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}
-
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .modalOverlay {
     padding: 0;
     align-items: flex-end;
@@ -297,18 +613,20 @@
   .modalCard {
     width: 100%;
     max-width: 100%;
+    height: 94vh;
     border-radius: 20px 20px 0 0;
   }
 
   .modalHeader {
-    padding: 16px;
+    padding: 14px 16px 10px 16px;
   }
 
-  .avatarLarge {
-    width: 60px;
-    height: 60px;
-    font-size: 20px;
+  .messageRowAi,
+  .messageRowCustomer {
+    max-width: 95%;
+  }
+
+  .actionsSection {
+    padding: 12px 16px;
   }
 }
-
-

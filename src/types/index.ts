@@ -189,6 +189,17 @@ export type TwilioCallStage =
   | 'completed'
   | 'rejected';
 
+export interface LiveConversationMessage {
+  id: string;
+  speaker: 'ai' | 'customer';
+  speakerLabel: string;
+  text: string;
+  time?: string;
+  status?: 'speaking' | 'listening' | 'completed' | 'generating';
+  intent?: string;
+  toolsExecuted?: string[];
+}
+
 export interface ActiveCallState {
   lifecycle: CallLifecycle;
   mode: CallEngineMode;
@@ -225,6 +236,9 @@ export interface ActiveCallState {
   isConfigured?: boolean;
   voiceSessionId?: string;
   aiTranscript?: string | Array<{ speaker: 'ai' | 'customer'; text: string; time?: string }>;
+  conversationMessages?: LiveConversationMessage[];
+  liveSpeakingStatus?: 'idle' | 'listening' | 'generating' | 'speaking';
 }
+
 
 

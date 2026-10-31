@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { CallEngineMode, ActiveCallState } from '../types';
+import { CallEngineMode, ActiveCallState, LiveConversationMessage } from '../types';
 import { getTelUri } from '../utils/phoneUtils';
 import { useAppState } from './AppStateContext';
 
@@ -476,13 +476,13 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const lower = transcript.toLowerCase();
         if (lower.includes('emi') || lower.includes('price') || lower.includes('discount')) {
           triggerAISpokenResponse(
-            contactName,
-            "I'm specifically comparing the Ortho GRID price with competitors. Does the ₹8,490 include 0% interest EMI?"
+            'The Sleep Company Assistant',
+            "The SmartGRID Ortho starts at ₹8,490 Queen size with 0% No-Cost EMI from ₹1,415 per month. You can also use code FESTIVE1000 for ₹1,000 off!"
           );
         } else if (lower.includes('trial') || lower.includes('warranty') || lower.includes('night')) {
           triggerAISpokenResponse(
-            contactName,
-            'That 100-night trial sounds reassuring! How does the return pickup work if my back needs more time to adapt?'
+            'The Sleep Company Assistant',
+            'We provide a risk-free 100-night home trial with 100% money back and free doorstep return pickup, plus a 10-year warranty.'
           );
         }
       };
@@ -495,19 +495,31 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
 
-    // Initial greeting from the AI customer
+    // Initial greeting from The Sleep Company Assistant
     setTimeout(() => {
       triggerAISpokenResponse(
-        contactName,
-        `Hello Arvind, this is ${contactName}. I visited your store yesterday and was looking at the Ortho GRID mattress.`
+        'The Sleep Company Assistant',
+        `Hello ${contactName || ''}, this is the AI assistant from The Sleep Company. I'm calling regarding your enquiry about our SmartGRID mattresses. How are you doing today?`
       );
-    }, 2500);
+    }, 2000);
   };
 
   const triggerAISpokenResponse = (speaker: string, text: string) => {
+    const isAi = speaker.includes('Sleep Company') || speaker.includes('Assistant');
+    const newMsg: LiveConversationMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      speaker: isAi ? 'ai' : 'customer',
+      speakerLabel: isAi ? 'The Sleep Company Assistant' : 'You',
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'speaking'
+    };
+
     setCallState((prev) => ({
       ...prev,
-      aiResponseText: `${speaker}: "${text}"`
+      aiResponseText: `${speaker}: "${text}"`,
+      conversationMessages: [...(prev.conversationMessages || []), newMsg],
+      liveSpeakingStatus: isAi ? 'speaking' : 'idle'
     }));
 
     if ('speechSynthesis' in window) {
@@ -516,6 +528,15 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.lang = 'en-IN';
+      utterance.onend = () => {
+        setCallState((prev) => ({
+          ...prev,
+          liveSpeakingStatus: 'idle',
+          conversationMessages: (prev.conversationMessages || []).map((m) =>
+            m.id === newMsg.id ? { ...m, status: 'completed' } : m
+          )
+        }));
+      };
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -705,11 +726,25 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const currentStatus = statusData.status;
 
             if (statusData.transcript && Array.isArray(statusData.transcript)) {
-              const fullTranscript = statusData.transcript
-                .map((t: { speaker: string; text: string }) => `${t.speaker === 'assistant' ? 'AI Voicebot' : name}: ${t.text}`)
+              const msgs: LiveConversationMessage[] = statusData.transcript.map(
+                (t: { speaker: string; text: string; time?: string }, idx: number) => ({
+                  id: `exotel-msg-${idx}`,
+                  speaker: t.speaker === 'assistant' || t.speaker === 'ai' ? 'ai' : 'customer',
+                  speakerLabel: t.speaker === 'assistant' || t.speaker === 'ai' ? 'The Sleep Company Assistant' : 'You',
+                  text: t.text,
+                  time: t.time || '00:01',
+                  status: 'completed'
+                })
+              );
+              const fullTranscript = msgs
+                .map((m) => `${m.speakerLabel}: "${m.text}"`)
                 .join('\n');
               setAiSpeechTranscript(fullTranscript);
-              setCallState((prev) => ({ ...prev, aiTranscript: fullTranscript }));
+              setCallState((prev) => ({
+                ...prev,
+                aiTranscript: fullTranscript,
+                conversationMessages: msgs
+              }));
             }
 
             if (currentStatus === 'calling_customer') {
@@ -949,19 +984,98 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             const currentStatus = statusData.status;
 
+            // Build rich LiveConversationMessage[] for both sides of the telephone dialogue
+            const messages: LiveConversationMessage[] = [];
+            const customerDisplayName = 'You';
+            const aiDisplayName = 'The Sleep Company Assistant';
+
+            // Message 0: Initial Greeting (Turn 0)
+            const greetingText =
+              statusData.initialGreeting ||
+              `Hello ${name || ''}, this is the AI assistant from The Sleep Company. I'm calling regarding your enquiry about the ${callStateRef.current.productInterest || 'Ortho GRID'}. How are you doing today?`;
+
+            const isInitialGreetingSpeaking =
+              currentStatus === 'customer_answered' ||
+              (currentStatus === 'ai_speaking' && (!statusData.transcript || statusData.transcript.length === 0));
+
+            messages.push({
+              id: 'msg-greeting',
+              speaker: 'ai',
+              speakerLabel: aiDisplayName,
+              text: greetingText,
+              time: '00:01',
+              status: isInitialGreetingSpeaking ? 'speaking' : 'completed'
+            });
+
+            // Multi-turn transcript exchanges
             if (statusData.transcript && Array.isArray(statusData.transcript)) {
-              const fullTranscript = statusData.transcript
-                .map((t: { turn: number; customerSpeech?: string; aiResponseText?: string }) => {
-                  const parts = [];
-                  if (t.customerSpeech) parts.push(`${name}: "${t.customerSpeech}"`);
-                  if (t.aiResponseText) parts.push(`AI Assistant: "${t.aiResponseText}"`);
-                  return parts.join('\n');
-                })
-                .filter(Boolean)
-                .join('\n');
-              setAiSpeechTranscript(fullTranscript);
-              setCallState((prev) => ({ ...prev, aiTranscript: fullTranscript }));
+              statusData.transcript.forEach((t: {
+                turn: number;
+                customerSpeech?: string;
+                aiResponseText?: string;
+                timestamp?: string;
+                intent?: string;
+                toolsExecuted?: string[];
+              }, idx: number) => {
+                const isLastTurn = idx === statusData.transcript.length - 1;
+
+                if (t.customerSpeech) {
+                  messages.push({
+                    id: `msg-${t.turn}-customer`,
+                    speaker: 'customer',
+                    speakerLabel: customerDisplayName,
+                    text: t.customerSpeech,
+                    time: t.timestamp,
+                    status: 'completed'
+                  });
+                }
+
+                if (t.aiResponseText) {
+                  const isCurrentlySpeaking = isLastTurn && currentStatus === 'ai_speaking';
+                  messages.push({
+                    id: `msg-${t.turn}-ai`,
+                    speaker: 'ai',
+                    speakerLabel: aiDisplayName,
+                    text: t.aiResponseText,
+                    time: t.timestamp,
+                    status: isCurrentlySpeaking ? 'speaking' : 'completed',
+                    intent: t.intent,
+                    toolsExecuted: t.toolsExecuted
+                  });
+                }
+              });
             }
+
+            // Pending generation state if AI is currently generating response
+            if (currentStatus === 'processing') {
+              if (statusData.lastCustomerSpeech && !messages.some((m) => m.text === statusData.lastCustomerSpeech)) {
+                messages.push({
+                  id: `msg-pending-customer-${Date.now()}`,
+                  speaker: 'customer',
+                  speakerLabel: customerDisplayName,
+                  text: statusData.lastCustomerSpeech,
+                  status: 'completed'
+                });
+              }
+              messages.push({
+                id: 'msg-pending-ai-generating',
+                speaker: 'ai',
+                speakerLabel: aiDisplayName,
+                text: 'The Sleep Company Assistant is thinking...',
+                status: 'generating'
+              });
+            }
+
+            let liveSpeakingStatus: 'idle' | 'listening' | 'generating' | 'speaking' = 'idle';
+            if (currentStatus === 'processing') liveSpeakingStatus = 'generating';
+            else if (currentStatus === 'ai_speaking' || isInitialGreetingSpeaking) liveSpeakingStatus = 'speaking';
+            else if (currentStatus === 'listening') liveSpeakingStatus = 'listening';
+
+            const fullTranscript = messages
+              .map((m) => `${m.speakerLabel}: "${m.text}"`)
+              .join('\n');
+
+            setAiSpeechTranscript(fullTranscript);
 
             if (currentStatus === 'queued') {
               setCallState((prev) => ({
@@ -969,7 +1083,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 lifecycle: 'DIALING',
                 twilioStatus: 'queued',
                 twilioStage: 'call_created',
-                aiResponseText: `Stage 2: Twilio call queued at carrier gateway. Dispatching to customer mobile...`
+                aiResponseText: `Stage 2: Twilio call queued at carrier gateway. Dispatching to customer mobile...`,
+                conversationMessages: messages,
+                liveSpeakingStatus
               }));
             } else if (currentStatus === 'ringing') {
               setCallState((prev) => ({
@@ -977,7 +1093,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 lifecycle: 'RINGING',
                 twilioStatus: 'ringing',
                 twilioStage: 'ringing',
-                aiResponseText: `Stage 3: Customer mobile (${maskedPhone}) is ringing on carrier network...`
+                aiResponseText: `Stage 3: Customer mobile (${maskedPhone}) is ringing on carrier network...`,
+                conversationMessages: messages,
+                liveSpeakingStatus
               }));
             } else if (
               currentStatus === 'customer_answered' ||
@@ -1013,7 +1131,10 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 twilioStatus: currentStatus,
                 twilioStage: 'customer_answered',
                 recordingUrl: statusData.recordingUrl || prev.recordingUrl,
-                aiResponseText: responseSnippet
+                aiResponseText: responseSnippet,
+                aiTranscript: fullTranscript,
+                conversationMessages: messages,
+                liveSpeakingStatus
               }));
             } else if (
               currentStatus === 'completed' ||
@@ -1044,7 +1165,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 twilioStatus: currentStatus,
                 durationSeconds: finalDuration,
                 recordingUrl: statusData.recordingUrl || prev.recordingUrl,
-                aiResponseText: `Twilio AI Call finished: ${currentStatus.toUpperCase()}`
+                aiResponseText: `Twilio AI Call finished: ${currentStatus.toUpperCase()}`,
+                liveSpeakingStatus: 'idle',
+                conversationMessages: messages
               }));
 
               const nowTimeStr = `Today ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;

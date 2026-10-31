@@ -67,6 +67,7 @@ export interface TwilioVoiceSession {
   isTrialSample?: boolean;
   trialSampleUrl?: string;
   lastTwilioCheckAt?: number;
+  initialGreeting?: string;
 }
 
 export interface StructuredAiTurnResponse {
@@ -596,11 +597,16 @@ export function generateTwilioGreeting(session: TwilioVoiceSession): string {
     if (session.customerPhone && session.customerPhone.includes('7204104491')) {
       name = 'Chinmay';
     } else {
-      name = 'there';
+      name = '';
     }
   }
-  const product = session.product || 'Ortho GRID Mattress';
-  return `Hello ${name}! This is Arvind Rajan calling from The Sleep Company regarding your enquiry on the ${product}. How are you doing today?`;
+  const namePrefix = name ? `Hello ${name},` : 'Hello,';
+  const product = (session.product || '').trim();
+  const productPhrase = product
+    ? `regarding your enquiry about the ${product}`
+    : 'regarding your enquiry about our SmartGRID mattresses';
+
+  return `${namePrefix} this is the AI assistant from The Sleep Company. I'm calling ${productPhrase}. How are you doing today?`;
 }
 
 /**
@@ -775,12 +781,20 @@ CRITICAL INSTRUCTIONS:
 9. If customer requests a human agent or manager, set shouldHandoff to true and shouldEndCall to true.`;
 
   try {
-    const geminiResult = await executeGeminiQuery(
-      leadContextPrompt,
-      activeKey,
-      process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash-lite',
-      historyForGemini
+    // Safety timeout: Twilio hard webhook timeout is 15s. Race Gemini at 7500ms to guarantee valid TwiML
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini query timed out after 7500ms')), 7500)
     );
+
+    const geminiResult = await Promise.race([
+      executeGeminiQuery(
+        leadContextPrompt,
+        activeKey,
+        process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash-lite',
+        historyForGemini
+      ),
+      timeoutPromise
+    ]);
 
     const rawText = geminiResult.text.trim();
     const toolsExecuted = (geminiResult.toolsExecuted || []).map((t) => t.toolName);
@@ -795,7 +809,7 @@ CRITICAL INSTRUCTIONS:
     let shouldHandoff = isHandoff;
 
     if (isHandoff) {
-      responseText = "I will connect you with a senior sleep specialist right away. Arvind Rajan will follow up with you directly. Thank you for your time!";
+      responseText = "I will connect you with a senior sleep specialist right away. A specialist from our team will follow up with you directly. Thank you for your time!";
       shouldEndCall = true;
     }
 
@@ -1192,9 +1206,12 @@ export async function handleTwilioVoiceWebhook(
         bindTwilioCallSid(session.sessionId, callSid);
       }
 
+      const greeting = generateTwilioGreeting(session);
+      session.initialGreeting = greeting;
+
       updateTwilioSessionStatus(session.sessionId, 'customer_answered', {
         answeredAt: Date.now(),
-        lastAiResponse: generateTwilioGreeting(session)
+        lastAiResponse: greeting
       });
 
       console.log(`[TwilioService:Voice] Customer answered for ${session.customerName} (${maskPhoneNumber(session.customerPhone)}). Sending initial TwiML greeting.`);
@@ -1326,7 +1343,7 @@ export async function handleTwilioAiTurnWebhook(
       const response = new VoiceResponse();
       response.say(
         { voice: 'Polly.Aditi', language: 'en-IN' },
-        'Our Sleep Company showroom team is available to assist you. Arvind Rajan will contact you shortly. Goodbye!'
+        'Our Sleep Company showroom team is available to assist you. A sleep specialist from our team will contact you shortly. Goodbye!'
       );
       response.hangup();
       res.statusCode = 200;
@@ -1472,6 +1489,9 @@ export async function handleTwilioCallStatusQuery(
       duration,
       transcriptSnippet: session.lastAiResponse || session.lastCustomerSpeech,
       transcript: session.turns,
+      initialGreeting: session.initialGreeting || generateTwilioGreeting(session),
+      lastCustomerSpeech: session.lastCustomerSpeech,
+      lastAiResponse: session.lastAiResponse,
       recordingUrl: session.recordingUrl,
       providerError: session.providerError
     })

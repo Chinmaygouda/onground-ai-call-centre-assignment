@@ -498,8 +498,8 @@ async function runTwilioTestSuite() {
   assert(chinmaySession.customerName === 'Chinmay', 'Customer name automatically resolves to Chinmay when phone matches +917204104491');
 
   const chinmayGreeting = generateTwilioGreeting(chinmaySession);
-  assert(chinmayGreeting.startsWith('Hello Chinmay!'), 'Greeting addresses customer directly as "Hello Chinmay!" instead of "Hello customer"');
-  assert(chinmayGreeting.includes('Arvind Rajan'), 'Greeting introduces frontline specialist Arvind Rajan');
+  assert(chinmayGreeting.includes('Hello Chinmay'), 'Greeting addresses customer directly by name');
+  assert(chinmayGreeting.includes('AI assistant') || chinmayGreeting.includes('The Sleep Company Assistant'), 'Greeting identifies as AI assistant from The Sleep Company');
   assert(chinmayGreeting.includes('The Sleep Company'), 'Greeting explicitly identifies The Sleep Company');
   assert(chinmayGreeting.includes('Ortho GRID'), 'Greeting mentions enquired product (Ortho GRID)');
   updateTwilioSessionStatus(chinmaySession.sessionId, 'completed');
