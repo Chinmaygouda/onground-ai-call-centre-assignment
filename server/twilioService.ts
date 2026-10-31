@@ -403,7 +403,7 @@ export function validateTwilioWebhookSignature(
 
 /**
  * Checks if an active call is already ongoing for this destination number.
- * Automatically clears stale sessions that have had no activity for over 60 seconds.
+ * Real Twilio Call SIDs are never auto-cleared based on inactivity alone.
  */
 export function hasActiveCallForLeadOrPhone(phone: string): boolean {
   const normalized = normalizePhoneNumber(phone);
@@ -413,16 +413,22 @@ export function hasActiveCallForLeadOrPhone(phone: string): boolean {
       if (TERMINAL_TWILIO_STATUSES.has(session.status)) {
         continue;
       }
-      // Staleness check: if no event/heartbeat occurred in 60s, release the lock
-      if (now - session.updatedAt > 60000) {
-        clearTwilioSession(session.sessionId, 'Auto-cleared after 60s inactivity', 'completed');
+      // Definitively failed initiations without Call SID do not block
+      if (!session.callSid && (session.status === 'failed' || Boolean(session.providerError))) {
+        clearTwilioSession(session.sessionId, 'Initiation failed without Call SID', 'failed');
         continue;
       }
-      // Simulation timeout: 30 seconds
+      // Orphaned initiation timeout (>60s) without in-flight request
+      if (!session.callSid && now - session.createdAt > 60000 && !inFlightInitiations.has(session.customerPhone)) {
+        clearTwilioSession(session.sessionId, 'Orphaned initiation timed out (>60s)', 'failed');
+        continue;
+      }
+      // Simulation timeout: 30 seconds (simulation only, has no real Twilio Call SID)
       if (session.callSid && session.callSid.startsWith('CASIM_') && now - session.createdAt > 30000) {
         clearTwilioSession(session.sessionId, 'Simulation call expired', 'completed');
         continue;
       }
+      // Real Twilio sessions or in-flight initiations hold the lock until confirmed terminal or explicitly ended
       return true;
     }
   }
@@ -432,6 +438,10 @@ export function hasActiveCallForLeadOrPhone(phone: string): boolean {
 /**
  * Verifies live status against Twilio REST API before blocking or initiating calls.
  * Ensures stale sessions (where customer hung up on mobile) are cleared automatically.
+ * Safety Rules:
+ * 1. Never auto-clears valid Call SIDs based on inactivity alone.
+ * 2. Does not clear pending initiations merely for being 10s old; checks whether Twilio request is in flight.
+ * 3. Preserves lock on Twilio API/network verification errors.
  */
 export async function verifyAndClearStaleActiveCall(
   phone: string,
@@ -441,6 +451,7 @@ export async function verifyAndClearStaleActiveCall(
   hasActiveCall: boolean;
   activeSession?: TwilioVoiceSession;
   liveTwilioStatus?: string;
+  verificationError?: string;
 }> {
   const normalized = normalizePhoneNumber(phone);
   const now = Date.now();
@@ -464,31 +475,43 @@ export async function verifyAndClearStaleActiveCall(
   }
 
   for (const session of matchingSessions) {
-    // 1. Auto-clear orphaned sessions without Call SID (>10s old)
+    // 1. Sessions without Call SID: check whether Twilio API request is in flight or definitively failed
     if (!session.callSid) {
-      if (now - session.createdAt > 10000) {
-        console.log(`[TwilioService] Auto-clearing orphaned session ${session.sessionId} without Call SID (>10s old)`);
-        clearTwilioSession(session.sessionId, 'Orphaned session without Call SID (>10s old)', 'completed');
+      // If Twilio API request is currently in-flight, keep lock
+      if (inFlightInitiations.has(session.customerPhone)) {
+        return {
+          hasActiveCall: true,
+          activeSession: session,
+          liveTwilioStatus: 'initiating_in_flight'
+        };
+      }
+      // If creation definitively failed, safely clear the session
+      if (session.status === 'failed' || Boolean(session.providerError)) {
+        clearTwilioSession(session.sessionId, 'Call initiation definitively failed without Call SID', 'failed');
         continue;
       }
+      // If orphaned initiation is older than 60s without Call SID, clean up
+      if (now - session.createdAt > 60000) {
+        clearTwilioSession(session.sessionId, 'Orphaned initiation without Call SID after timeout (>60s)', 'failed');
+        continue;
+      }
+      // Otherwise initiation is still pending: preserve lock
+      return {
+        hasActiveCall: true,
+        activeSession: session,
+        liveTwilioStatus: 'initiating_pending'
+      };
     }
 
-    // 2. Inactivity auto-clear (>45s)
-    if (now - session.updatedAt > 45000) {
-      console.log(`[TwilioService] Auto-clearing stale session ${session.sessionId} (inactive for ${Math.round((now - session.updatedAt) / 1000)}s)`);
-      clearTwilioSession(session.sessionId, 'Cleared stale inactive session (>45s)', 'completed');
-      continue;
-    }
-
-    // 3. Simulation call timeout (>20s)
+    // 2. Simulation call timeout (>30s) - only for CASIM_ simulated calls
     if (session.callSid && session.callSid.startsWith('CASIM_')) {
-      if (now - session.createdAt > 20000) {
+      if (now - session.createdAt > 30000) {
         clearTwilioSession(session.sessionId, 'Simulation call expired', 'completed');
         continue;
       }
     }
 
-    // 4. Live Twilio REST API check if real CallSid exists
+    // 3. Live Twilio REST API check if real CallSid exists
     if (
       session.callSid &&
       session.callSid.startsWith('CA') &&
@@ -524,16 +547,14 @@ export async function verifyAndClearStaleActiveCall(
         if (err?.status === 404 || err?.code === 20404) {
           clearTwilioSession(session.sessionId, `Twilio call not found (${err?.code || '404'})`, 'completed');
           continue;
-        } else if (now - session.updatedAt > 30000) {
-          clearTwilioSession(session.sessionId, `Cleared stale session after verify error (${err?.message || 'unknown'})`, 'completed');
-          continue;
-        } else {
-          return {
-            hasActiveCall: true,
-            activeSession: session,
-            liveTwilioStatus: 'unknown'
-          };
         }
+        // Network or API error verifying status: PRESERVE THE LOCK! (Safety Review Requirement 4)
+        return {
+          hasActiveCall: true,
+          activeSession: session,
+          liveTwilioStatus: 'verification_error',
+          verificationError: err?.message || 'Network or provider error while verifying live Twilio call status'
+        };
       }
     }
   }
@@ -947,6 +968,7 @@ export async function initiateTwilioOutboundCall(
     );
 
     if (activeCheck.hasActiveCall) {
+      const isVerificationError = activeCheck.liveTwilioStatus === 'verification_error';
       return {
         success: false,
         stage: 'idle',
@@ -956,9 +978,13 @@ export async function initiateTwilioOutboundCall(
         from: creds.fromNumber!,
         isTrial: creds.isTrial,
         liveCallEnabled: false,
-        error: 'DUPLICATE_CALL_IN_PROGRESS',
-        message: `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude or clear the session lock.`,
-        troubleshooting: 'If the previous call has already finished on your telephone, click "Clear Stale Session & Retry" to immediately release the local active session.'
+        error: isVerificationError ? 'TWILIO_VERIFICATION_UNAVAILABLE' : 'DUPLICATE_CALL_IN_PROGRESS',
+        message: isVerificationError
+          ? `Unable to verify call status with Twilio (${activeCheck.verificationError || 'network error'}). Lock preserved for safety.`
+          : `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude or clear the session lock.`,
+        troubleshooting: isVerificationError
+          ? 'Twilio REST API status check encountered a temporary network or API error. The active call lock was preserved to prevent accidental duplicate calls. You can click "Clear Stale Session" if you are certain the call has ended.'
+          : 'If the previous call has already finished on your telephone, click "Clear Stale Session" to release the local active session.'
       };
     }
 

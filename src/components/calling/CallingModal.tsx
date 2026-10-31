@@ -8,6 +8,7 @@ export const CallingModal: React.FC = () => {
     callState,
     startCall,
     endCall,
+    clearSessionLock,
     toggleMute,
     audioFrequencyData,
     aiSpeechTranscript,
@@ -596,26 +597,14 @@ export const CallingModal: React.FC = () => {
                         Session Lock Protection:
                       </div>
                       <div>• <strong>Concurrency Protection:</strong> An active session is currently registered in memory for this phone number to prevent duplicate outbound calls.</div>
-                      <div>• <strong>Stale Call Recovery:</strong> If the previous call has already concluded on your phone, click <strong>&quot;Clear Stale Session &amp; Retry&quot;</strong> to synchronize live status and place the call immediately.</div>
+                      <div>• <strong>Stale Call Recovery:</strong> If the previous call has already concluded on your phone, click <strong>&quot;Clear Stale Session&quot;</strong> to release the lock safely without initiating a call.</div>
                       <div>• <strong>Carrier Termination:</strong> Or click <strong>&quot;End &amp; Close&quot;</strong> to issue an explicit disconnect command to Twilio.</div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button
                         onClick={() => {
-                          endCall();
-                          setTimeout(() => {
-                            startCall({
-                              name: callState.contactName,
-                              phone: callState.contactPhone,
-                              mode: 'TWILIO_AI',
-                              isTrialSample: false,
-                              product: callState.productInterest,
-                              value: callState.expectedValue,
-                              force: true,
-                              clearStale: true
-                            });
-                          }, 120);
+                          clearSessionLock(callState.contactPhone);
                         }}
                         style={{
                           padding: '6px 12px',
@@ -628,9 +617,36 @@ export const CallingModal: React.FC = () => {
                           fontSize: '11px',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                         }}
-                        title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
+                        title="Release the active session lock in memory without placing any phone call"
                       >
-                        Clear Stale Session &amp; Retry
+                        Clear Stale Session
+                      </button>
+                      <button
+                        onClick={() => {
+                          startCall({
+                            name: callState.contactName,
+                            phone: callState.contactPhone,
+                            mode: 'TWILIO_AI',
+                            isTrialSample: false,
+                            product: callState.productInterest,
+                            value: callState.expectedValue,
+                            force: false,
+                            clearStale: false
+                          });
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#2563eb',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#ffffff',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                        title="Initiate a new Twilio AI outbound call"
+                      >
+                        Retry Call
                       </button>
                       <button
                         onClick={endCall}
@@ -691,19 +707,7 @@ export const CallingModal: React.FC = () => {
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => {
-                        endCall();
-                        setTimeout(() => {
-                          startCall({
-                            name: callState.contactName,
-                            phone: callState.contactPhone,
-                            mode: 'TWILIO_AI',
-                            isTrialSample: false,
-                            product: callState.productInterest,
-                            value: callState.expectedValue,
-                            force: true,
-                            clearStale: true
-                          });
-                        }, 120);
+                        clearSessionLock(callState.contactPhone);
                       }}
                       style={{
                         padding: '6px 12px',
@@ -716,25 +720,49 @@ export const CallingModal: React.FC = () => {
                         fontSize: '11px',
                         boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                       }}
-                      title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
+                      title="Release the active session lock in memory without placing any phone call"
                     >
-                      Clear Stale Session &amp; Retry
+                      Clear Stale Session
                     </button>
                     <button
                       onClick={() => {
-                        endCall();
-                        setTimeout(() => {
-                          startCall({
-                            name: callState.contactName,
-                            phone: callState.contactPhone,
-                            mode: 'TWILIO_AI',
-                            isTrialSample: true,
-                            product: callState.productInterest,
-                            value: callState.expectedValue,
-                            force: true,
-                            clearStale: true
-                          });
-                        }, 120);
+                        startCall({
+                          name: callState.contactName,
+                          phone: callState.contactPhone,
+                          mode: 'TWILIO_AI',
+                          isTrialSample: false,
+                          product: callState.productInterest,
+                          value: callState.expectedValue,
+                          force: false,
+                          clearStale: false
+                        });
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#2563eb',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontSize: '11px'
+                      }}
+                      title="Initiate a new Twilio AI outbound call"
+                    >
+                      Retry Call
+                    </button>
+                    <button
+                      onClick={() => {
+                        startCall({
+                          name: callState.contactName,
+                          phone: callState.contactPhone,
+                          mode: 'TWILIO_AI',
+                          isTrialSample: true,
+                          product: callState.productInterest,
+                          value: callState.expectedValue,
+                          force: false,
+                          clearStale: false
+                        });
                       }}
                       style={{
                         padding: '6px 12px',

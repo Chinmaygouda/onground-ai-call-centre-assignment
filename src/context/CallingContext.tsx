@@ -30,6 +30,7 @@ interface CallingContextType {
     force?: boolean;
   }) => Promise<void>;
   endCall: () => void;
+  clearSessionLock: (phone?: string) => Promise<void>;
   toggleMute: () => void;
   audioFrequencyData: Uint8Array | null;
   aiSpeechTranscript: string;
@@ -1397,6 +1398,52 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 2000);
   };
 
+  const clearSessionLock = async (phone?: string) => {
+    const targetPhone = phone || callStateRef.current.contactPhone;
+    const currentTwilioSid = twilioCallSidRef.current || callStateRef.current.twilioCallSid;
+    const currentSessionId = callStateRef.current.voiceSessionId;
+
+    console.log(`[Calling:ClearSession] Explicitly clearing session lock for phone=${targetPhone}, SID=${currentTwilioSid}, sessionId=${currentSessionId}. NO outbound call will be initiated.`);
+
+    sessionStorage.removeItem('onground_active_twilio_session');
+    twilioCallSidRef.current = null;
+
+    try {
+      let res = await fetch('/api/twilio/end-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callSid: currentTwilioSid,
+          sessionId: currentSessionId,
+          phone: targetPhone
+        })
+      });
+      if (res.status === 404) {
+        await fetch('/.netlify/functions/twilio-end-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callSid: currentTwilioSid,
+            sessionId: currentSessionId,
+            phone: targetPhone
+          })
+        });
+      }
+    } catch (err) {
+      console.warn('[Calling:ClearSession] Error requesting session lock release:', err);
+    }
+
+    setCallState((prev) => ({
+      ...prev,
+      lifecycle: 'IDLE',
+      providerError: undefined,
+      twilioStatus: undefined,
+      twilioStage: undefined,
+      twilioErrorDetails: undefined,
+      aiResponseText: 'Session lock released successfully. You may place a call when ready.'
+    }));
+  };
+
   const toggleMute = () => {
     const nextMuted = !callState.isMuted;
     if (mediaStreamRef.current) {
@@ -1504,6 +1551,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         tabSessionId: tabSessionId.current,
         startCall,
         endCall,
+        clearSessionLock,
         toggleMute,
         audioFrequencyData,
         aiSpeechTranscript,

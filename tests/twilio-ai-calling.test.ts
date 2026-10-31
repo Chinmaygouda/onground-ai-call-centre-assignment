@@ -706,27 +706,32 @@ async function runTwilioTestSuite() {
   assert(!hasActiveCallForLeadOrPhone('+917204104491'), 'Session lock is released after clearTwilioSession');
 
   // --------------------------------------------------------------------------
-  // TEST 30: Stale Session Auto-Recovery on Inactivity (>60s)
+  // TEST 30: Safety Review - Valid Call SID Persists Despite Inactivity (>60s) (Rule 1 & 3)
   // --------------------------------------------------------------------------
-  console.log('\n[TEST 30] Stale Session Auto-Recovery on Inactivity (>60s)');
-  const staleSession = createTwilioVoiceSession({
+  console.log('\n[TEST 30] Safety Review - Valid Call SID Persists Despite Inactivity (>60s) (Rule 1 & 3)');
+  const realCallSession = createTwilioVoiceSession({
     leadId: 'lead-test-30',
     customerName: 'Chinmay',
     customerPhone: '+917204104491',
     product: 'Ortho GRID'
   });
-  updateTwilioSessionStatus(staleSession.sessionId, 'in-progress');
+  bindTwilioCallSid(realCallSession.sessionId, 'CA_valid_carrier_sid_30');
+  updateTwilioSessionStatus(realCallSession.sessionId, 'in-progress');
 
-  // Verify it is initially treated as active
-  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Fresh session is active');
+  // Verify it is active initially
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Fresh session with Call SID is active');
 
-  // Artificially age session by 65 seconds to simulate a call where customer hung up without callback
-  staleSession.updatedAt = Date.now() - 65000;
+  // Artificially age session by 65 seconds to simulate a live call with speech pause/silence
+  realCallSession.updatedAt = Date.now() - 65000;
 
-  // hasActiveCallForLeadOrPhone must detect staleness and auto-clear it
-  const isStillActive = hasActiveCallForLeadOrPhone('+917204104491');
-  assert(isStillActive === false, 'Stale session (>60s) is auto-cleared and does NOT block calls');
-  assert(staleSession.status === 'completed', 'Stale session status automatically updated to completed');
+  // Real Twilio Call SIDs must NOT be auto-cleared on inactivity alone (Safety Review Rule 1)
+  const isStillLocked = hasActiveCallForLeadOrPhone('+917204104491');
+  assert(isStillLocked === true, 'Session with valid Twilio Call SID holds lock after 65s inactivity without being auto-cleared');
+  assert(realCallSession.status === 'in-progress', 'Valid session status remains in-progress until Twilio confirms terminal');
+
+  // Terminating via explicit End Call releases the lock (Safety Review Rule 3)
+  await terminateTwilioCall({ sessionId: realCallSession.sessionId }, testEnv);
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Session lock released cleanly after explicit call termination');
 
   // --------------------------------------------------------------------------
   // TEST 31: Pre-Call Verification & Force-Clear Flag
@@ -891,24 +896,42 @@ async function runTwilioTestSuite() {
   assert(!rawLogJson.includes('ACmock'), 'Raw logs never leak sensitive Twilio credentials');
 
   // --------------------------------------------------------------------------
-  // TEST 37: Stale Session Recovery & Orphaned Session Auto-Clear (Requirements 5, 8, 9)
+  // TEST 37: Pending Initiations vs Orphaned Session Auto-Clear (Rule 2 & 6)
   // --------------------------------------------------------------------------
-  console.log('\n[TEST 37] Stale Session Recovery & Orphaned Session Auto-Clear (Requirements 5, 8, 9)');
-  // 1. Create an orphaned session with no Call SID older than 12 seconds
+  console.log('\n[TEST 37] Pending Initiations vs Orphaned Session Auto-Clear (Rule 2 & 6)');
+  // 1. Pending initiation with in-flight Twilio request (15s old) MUST NOT be cleared
+  const pendingSession = createTwilioVoiceSession({
+    leadId: 'lead-test-37-pending',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  pendingSession.createdAt = Date.now() - 15000;
+  inFlightInitiations.add('+917204104491');
+
+  const checkPending = await verifyAndClearStaleActiveCall('+917204104491', testEnv, false);
+  assert(checkPending.hasActiveCall === true, 'Initiation session with in-flight request is preserved (not cleared after 10s)');
+  assert(checkPending.liveTwilioStatus === 'initiating_in_flight', 'Status reports initiating_in_flight');
+  inFlightInitiations.delete('+917204104491');
+
+  // 2. Definitively failed initiation session is cleared
+  pendingSession.status = 'failed';
+  pendingSession.providerError = 'Unverified number in trial account';
+  const checkFailed = await verifyAndClearStaleActiveCall('+917204104491', testEnv, false);
+  assert(checkFailed.hasActiveCall === false, 'Definitively failed initiation session without Call SID is safely cleared');
+
+  // 3. Orphaned session (>60s old) without in-flight request is auto-cleared
   const orphanedSession = createTwilioVoiceSession({
     leadId: 'lead-test-37-orphaned',
     customerName: 'Chinmay',
     customerPhone: '+917204104491',
     product: 'Ortho GRID'
   });
-  orphanedSession.createdAt = Date.now() - 15000; // 15 seconds old without Call SID
-
-  // verifyAndClearStaleActiveCall must detect orphaned state and auto-clear it
+  orphanedSession.createdAt = Date.now() - 65000; // 65 seconds old without Call SID
   const verifyOrphaned = await verifyAndClearStaleActiveCall('+917204104491', testEnv, false);
-  assert(verifyOrphaned.hasActiveCall === false, 'Orphaned session without Call SID (>10s) is auto-cleared');
-  assert(orphanedSession.status === 'completed', 'Orphaned session marked completed');
+  assert(verifyOrphaned.hasActiveCall === false, 'Orphaned session without Call SID (>60s) is auto-cleared');
 
-  // 2. Simulate browser refresh / page unload recovery using terminateTwilioCall with stored payload
+  // 4. Simulate browser refresh / page unload recovery beacon
   const refreshSession = createTwilioVoiceSession({
     leadId: 'lead-test-37-refresh',
     customerName: 'Chinmay',
@@ -917,13 +940,71 @@ async function runTwilioTestSuite() {
   });
   updateTwilioSessionStatus(refreshSession.sessionId, 'customer_answered');
 
-  // Simulated browser reload beacon
   const beaconResult = await terminateTwilioCall({
     sessionId: refreshSession.sessionId,
     phone: '+917204104491'
   }, testEnv);
-  assert(beaconResult.success === true, 'Browser reload recovery terminates call and clears session');
+  assert(beaconResult.success === true, 'Browser reload recovery beacon terminates call and clears session');
   assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Active lock released after browser recovery beacon');
+
+  // --------------------------------------------------------------------------
+  // TEST 38: Twilio Network/API Error Preserves Active Lock (Rule 4)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 38] Twilio Network/API Error Preserves Active Lock (Rule 4)');
+  const errorSession = createTwilioVoiceSession({
+    leadId: 'lead-test-38-err',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  // Use a Call SID format that will trigger Twilio API error in testEnv
+  bindTwilioCallSid(errorSession.sessionId, 'CA_network_test_error_999');
+  updateTwilioSessionStatus(errorSession.sessionId, 'in-progress');
+
+  // Force valid-format credentials that fail authentication at the Twilio API layer
+  const badTwilioEnv = {
+    ...testEnv,
+    TWILIO_ACCOUNT_SID: 'AC00000000000000000000000000000000',
+    TWILIO_AUTH_TOKEN: '00000000000000000000000000000000',
+    TWILIO_ENABLE_LIVE_CALLS: 'false'
+  };
+
+  const verifyError = await verifyAndClearStaleActiveCall('+917204104491', badTwilioEnv, false);
+  assert(verifyError.hasActiveCall === true, 'Active lock is PRESERVED when Twilio API verification encounters network/auth error');
+  assert(verifyError.liveTwilioStatus === 'verification_error', 'Reports liveTwilioStatus as verification_error');
+  assert(Boolean(verifyError.verificationError), 'Diagnostic error message is provided');
+
+  // Attempting to initiate outbound call while status is in verification_error fails with TWILIO_VERIFICATION_UNAVAILABLE
+  const blockedByVerificationError = await initiateTwilioOutboundCall(
+    { to: '+917204104491', clientName: 'Chinmay' },
+    badTwilioEnv
+  );
+  assert(blockedByVerificationError.success === false, 'Call rejected safely when verification is unavailable');
+  assert(blockedByVerificationError.error === 'TWILIO_VERIFICATION_UNAVAILABLE', 'Error code is TWILIO_VERIFICATION_UNAVAILABLE');
+
+  // Clean up error session with explicit end
+  await terminateTwilioCall({ sessionId: errorSession.sessionId }, testEnv);
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Lock released after explicit end');
+
+  // --------------------------------------------------------------------------
+  // TEST 39: Separate Clear Session Lock (Passive Recovery) from Calling (Rule 5)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 39] Separate Clear Session Lock (Passive Recovery) from Calling (Rule 5)');
+  const stuckSession = createTwilioVoiceSession({
+    leadId: 'lead-test-39-stuck',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  bindTwilioCallSid(stuckSession.sessionId, 'CASIM_stuck_call_999');
+  updateTwilioSessionStatus(stuckSession.sessionId, 'ringing');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Stuck session lock held');
+
+  // Clearing session lock must NOT initiate any calls
+  const passiveClearResult = await terminateTwilioCall({ phone: '+917204104491' }, testEnv);
+  assert(passiveClearResult.success === true, 'Clear session lock succeeds passively');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Lock is released without dialling');
+  assert(stuckSession.status === 'completed', 'Stuck session marked completed');
   console.log('\n================================================================');
   console.log(` RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log('================================================================\n');
