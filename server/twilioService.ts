@@ -66,6 +66,7 @@ export interface TwilioVoiceSession {
   lastAiResponse?: string;
   isTrialSample?: boolean;
   trialSampleUrl?: string;
+  lastTwilioCheckAt?: number;
 }
 
 export interface StructuredAiTurnResponse {
@@ -77,9 +78,50 @@ export interface StructuredAiTurnResponse {
   toolsExecuted?: string[];
 }
 
+export const TERMINAL_TWILIO_STATUSES = new Set<string>([
+  'completed',
+  'failed',
+  'busy',
+  'no-answer',
+  'canceled'
+]);
+
 // In-memory active session registries
 const activeSessions = new Map<string, TwilioVoiceSession>();
 const sidToSessionId = new Map<string, string>();
+
+/**
+ * Idempotently clears or marks an active Twilio session as terminal.
+ * Repeated calls with the same ID cannot cause double mutations or errors.
+ */
+export function clearTwilioSession(
+  sessionIdOrSid: string,
+  reason?: string,
+  terminalStatus: TwilioVoiceSession['status'] = 'completed'
+): TwilioVoiceSession | undefined {
+  const session = getTwilioSession(sessionIdOrSid);
+  if (!session) return undefined;
+
+  // Idempotent guard: if already terminal, ensure endedAt is set and return safely
+  if (TERMINAL_TWILIO_STATUSES.has(session.status)) {
+    if (!session.endedAt) session.endedAt = Date.now();
+    return session;
+  }
+
+  session.status = terminalStatus;
+  session.updatedAt = Date.now();
+  if (!session.endedAt) {
+    session.endedAt = Date.now();
+  }
+  if (session.answeredAt && (!session.durationSeconds || session.durationSeconds === 0)) {
+    session.durationSeconds = Math.max(0, Math.round((session.endedAt - session.answeredAt) / 1000));
+  }
+  if (reason) {
+    session.notes = session.notes ? `${session.notes} | ${reason}` : reason;
+  }
+  console.log(`[TwilioService] Idempotently cleared session ${session.sessionId} (CallSid: ${session.callSid || 'none'}), status=${terminalStatus}, reason=${reason || 'none'}`);
+  return session;
+}
 
 /**
  * Session Registry Helpers
@@ -156,25 +198,24 @@ export function updateTwilioSessionStatus(
   const session = getTwilioSession(sessionIdOrSid);
   if (!session) return;
 
-  session.status = status;
-  session.updatedAt = Date.now();
-
   if (extra) {
     Object.assign(session, extra);
   }
 
+  if (TERMINAL_TWILIO_STATUSES.has(status)) {
+    clearTwilioSession(session.sessionId, extra?.notes, status);
+    if (typeof extra?.durationSeconds === 'number') {
+      session.durationSeconds = extra.durationSeconds;
+    }
+    return;
+  }
+
+  session.status = status;
+  session.updatedAt = Date.now();
+
   if (status === 'in-progress' || status === 'customer_answered') {
     if (!session.answeredAt) {
       session.answeredAt = Date.now();
-    }
-  }
-
-  if (status === 'completed' || status === 'failed' || status === 'busy' || status === 'no-answer' || status === 'canceled') {
-    if (!session.endedAt) {
-      session.endedAt = Date.now();
-    }
-    if (session.answeredAt && typeof extra?.durationSeconds !== 'number') {
-      session.durationSeconds = Math.round((session.endedAt - session.answeredAt) / 1000);
     }
   }
 }
@@ -295,26 +336,127 @@ export function validateTwilioWebhookSignature(
 }
 
 /**
- * Checks if an active call is already ongoing for this destination number
+ * Checks if an active call is already ongoing for this destination number.
+ * Automatically clears stale sessions that have had no activity for over 60 seconds.
  */
 export function hasActiveCallForLeadOrPhone(phone: string): boolean {
   const normalized = normalizePhoneNumber(phone);
+  const now = Date.now();
   for (const session of activeSessions.values()) {
-    if (
-      session.customerPhone === normalized &&
-      (session.status === 'initiating' ||
-        session.status === 'queued' ||
-        session.status === 'ringing' ||
-        session.status === 'in-progress' ||
-        session.status === 'customer_answered' ||
-        session.status === 'ai_speaking' ||
-        session.status === 'listening' ||
-        session.status === 'processing')
-    ) {
+    if (session.customerPhone === normalized) {
+      if (TERMINAL_TWILIO_STATUSES.has(session.status)) {
+        continue;
+      }
+      // Staleness check: if no event/heartbeat occurred in 60s, release the lock
+      if (now - session.updatedAt > 60000) {
+        clearTwilioSession(session.sessionId, 'Auto-cleared after 60s inactivity', 'completed');
+        continue;
+      }
+      // Simulation timeout: 30 seconds
+      if (session.callSid && session.callSid.startsWith('CASIM_') && now - session.createdAt > 30000) {
+        clearTwilioSession(session.sessionId, 'Simulation call expired', 'completed');
+        continue;
+      }
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Verifies live status against Twilio REST API before blocking or initiating calls.
+ * Ensures stale sessions (where customer hung up on mobile) are cleared automatically.
+ */
+export async function verifyAndClearStaleActiveCall(
+  phone: string,
+  env: Record<string, string | undefined>,
+  forceClear = false
+): Promise<{
+  hasActiveCall: boolean;
+  activeSession?: TwilioVoiceSession;
+  liveTwilioStatus?: string;
+}> {
+  const normalized = normalizePhoneNumber(phone);
+  const now = Date.now();
+
+  const matchingSessions: TwilioVoiceSession[] = [];
+  for (const session of activeSessions.values()) {
+    if (session.customerPhone === normalized && !TERMINAL_TWILIO_STATUSES.has(session.status)) {
+      matchingSessions.push(session);
+    }
+  }
+
+  if (matchingSessions.length === 0) {
+    return { hasActiveCall: false };
+  }
+
+  if (forceClear) {
+    for (const s of matchingSessions) {
+      clearTwilioSession(s.sessionId, 'Force-cleared by user before new call', 'completed');
+    }
+    return { hasActiveCall: false };
+  }
+
+  for (const session of matchingSessions) {
+    // 1. Inactivity auto-clear (>60s)
+    if (now - session.updatedAt > 60000) {
+      console.log(`[TwilioService] Auto-clearing stale session ${session.sessionId} (inactive for ${Math.round((now - session.updatedAt) / 1000)}s)`);
+      clearTwilioSession(session.sessionId, 'Cleared stale inactive session (>60s)', 'completed');
+      continue;
+    }
+
+    // 2. Simulation call timeout (>30s)
+    if (session.callSid && session.callSid.startsWith('CASIM_')) {
+      if (now - session.createdAt > 30000) {
+        clearTwilioSession(session.sessionId, 'Simulation call expired', 'completed');
+        continue;
+      }
+    }
+
+    // 3. Live Twilio REST API check if real CallSid exists
+    if (
+      session.callSid &&
+      session.callSid.startsWith('CA') &&
+      !session.callSid.startsWith('CASIM_') &&
+      env.TWILIO_ACCOUNT_SID &&
+      env.TWILIO_AUTH_TOKEN
+    ) {
+      try {
+        const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
+        const liveCall = await client.calls(session.callSid).fetch();
+        const liveStatus = (liveCall.status || '').toLowerCase();
+        console.log(`[TwilioService] Live Twilio status check for ${session.callSid}: ${liveStatus}`);
+
+        if (TERMINAL_TWILIO_STATUSES.has(liveStatus)) {
+          console.log(`[TwilioService] Twilio confirms call ${session.callSid} is ${liveStatus}. Releasing local active session lock.`);
+          clearTwilioSession(session.sessionId, `Twilio live call confirmed as ${liveStatus}`, 'completed');
+          if (liveCall.duration) {
+            session.durationSeconds = parseInt(liveCall.duration, 10);
+          }
+          continue;
+        } else {
+          return {
+            hasActiveCall: true,
+            activeSession: session,
+            liveTwilioStatus: liveStatus
+          };
+        }
+      } catch (err: any) {
+        console.warn(`[TwilioService] Error verifying live Twilio status for ${session.callSid}: ${err?.message || err}. Clearing stale lock.`);
+        clearTwilioSession(session.sessionId, `Twilio live verify error: ${err?.message || 'unknown'}`, 'completed');
+        continue;
+      }
+    }
+  }
+
+  // Re-check if any active session remains
+  for (const session of activeSessions.values()) {
+    if (session.customerPhone === normalized && !TERMINAL_TWILIO_STATUSES.has(session.status)) {
+      return { hasActiveCall: true, activeSession: session };
+    }
+  }
+
+  return { hasActiveCall: false };
 }
 
 /**
@@ -630,6 +772,8 @@ export async function initiateTwilioOutboundCall(
     notes?: string;
     isTrialSample?: boolean;
     sampleTwiMLUrl?: string;
+    clearStale?: boolean;
+    force?: boolean;
   },
   env: Record<string, string | undefined>
 ): Promise<{
@@ -684,8 +828,14 @@ export async function initiateTwilioOutboundCall(
     };
   }
 
-  // Prevent accidental duplicate concurrent calls to the same recipient
-  if (hasActiveCallForLeadOrPhone(normalizedTo)) {
+  // Pre-call validation: Check if a genuine active call is ongoing, clearing stale sessions automatically
+  const activeCheck = await verifyAndClearStaleActiveCall(
+    normalizedTo,
+    env,
+    Boolean(payload.force || payload.clearStale)
+  );
+
+  if (activeCheck.hasActiveCall) {
     return {
       success: false,
       stage: 'idle',
@@ -696,7 +846,8 @@ export async function initiateTwilioOutboundCall(
       isTrial: creds.isTrial,
       liveCallEnabled: false,
       error: 'DUPLICATE_CALL_IN_PROGRESS',
-      message: `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude.`
+      message: `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude or clear the session lock.`,
+      troubleshooting: 'If the previous call has already finished on your telephone, click "Clear Session & Retry" to immediately release the local active session.'
     };
   }
 
@@ -1077,10 +1228,16 @@ export async function handleTwilioStatusCallbackWebhook(
         else if (callStatus === 'failed') mappedStatus = 'failed';
         else if (callStatus === 'canceled') mappedStatus = 'canceled';
 
-        updateTwilioSessionStatus(session.sessionId, mappedStatus, {
-          durationSeconds: callDuration || session.durationSeconds,
-          recordingUrl: recordingUrl || session.recordingUrl
-        });
+        if (TERMINAL_TWILIO_STATUSES.has(mappedStatus)) {
+          clearTwilioSession(session.sessionId, `Twilio statusCallback: ${callStatus}`, mappedStatus);
+          if (callDuration) session.durationSeconds = callDuration;
+          if (recordingUrl) session.recordingUrl = recordingUrl;
+        } else {
+          updateTwilioSessionStatus(session.sessionId, mappedStatus, {
+            durationSeconds: callDuration || session.durationSeconds,
+            recordingUrl: recordingUrl || session.recordingUrl
+          });
+        }
       }
 
       res.statusCode = 200;
@@ -1097,10 +1254,10 @@ export async function handleTwilioStatusCallbackWebhook(
 /**
  * Endpoint: Frontend Poll Endpoint (GET /api/twilio/call-status)
  */
-export function handleTwilioCallStatusQuery(
+export async function handleTwilioCallStatusQuery(
   req: IncomingMessage,
   res: ServerResponse,
-  _env: Record<string, string | undefined>
+  env: Record<string, string | undefined>
 ) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1121,6 +1278,34 @@ export function handleTwilioCallStatusQuery(
       })
     );
     return;
+  }
+
+  // Periodic live Twilio REST API synchronization:
+  // If session is active and has a real Twilio SID, check Twilio if >3s since last check
+  if (
+    !TERMINAL_TWILIO_STATUSES.has(session.status) &&
+    session.callSid &&
+    session.callSid.startsWith('CA') &&
+    !session.callSid.startsWith('CASIM_') &&
+    env.TWILIO_ACCOUNT_SID &&
+    env.TWILIO_AUTH_TOKEN &&
+    Date.now() - (session.lastTwilioCheckAt || 0) > 3000
+  ) {
+    session.lastTwilioCheckAt = Date.now();
+    try {
+      const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
+      const liveCall = await client.calls(session.callSid).fetch();
+      const liveStatus = (liveCall.status || '').toLowerCase();
+      if (TERMINAL_TWILIO_STATUSES.has(liveStatus)) {
+        console.log(`[TwilioService:CallStatus] Discovered call ${session.callSid} finished on Twilio (${liveStatus}). Auto-syncing local session.`);
+        clearTwilioSession(session.sessionId, `Twilio live call completed: ${liveStatus}`, 'completed');
+        if (liveCall.duration) {
+          session.durationSeconds = parseInt(liveCall.duration, 10);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[TwilioService:CallStatus] Live poll check warning:', err?.message || err);
+    }
   }
 
   // Calculate live elapsed seconds if active
@@ -1147,6 +1332,146 @@ export function handleTwilioCallStatusQuery(
       providerError: session.providerError
     })
   );
+}
+
+/**
+ * Terminates a Twilio telephone call via REST API and clears the active session lock.
+ */
+export async function terminateTwilioCall(
+  params: {
+    callSid?: string;
+    sessionId?: string;
+    phone?: string;
+  },
+  env: Record<string, string | undefined>
+): Promise<{
+  success: boolean;
+  callSid?: string;
+  sessionId?: string;
+  status: string;
+  message: string;
+}> {
+  const targetSid = (params.callSid || '').trim();
+  const targetSessionId = (params.sessionId || '').trim();
+  const targetPhone = params.phone ? normalizePhoneNumber(params.phone) : '';
+
+  let session = targetSessionId ? getTwilioSession(targetSessionId) : undefined;
+  if (!session && targetSid) {
+    session = getTwilioSession(targetSid);
+  }
+  if (!session && targetPhone) {
+    for (const s of activeSessions.values()) {
+      if (s.customerPhone === targetPhone && !TERMINAL_TWILIO_STATUSES.has(s.status)) {
+        session = s;
+        break;
+      }
+    }
+  }
+
+  const effectiveCallSid = targetSid || session?.callSid;
+  const isRealTwilioSid =
+    effectiveCallSid &&
+    effectiveCallSid.startsWith('CA') &&
+    !effectiveCallSid.startsWith('CASIM_');
+
+  let twilioTerminated = false;
+  let twilioNotice: string | undefined;
+
+  if (isRealTwilioSid && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) {
+    try {
+      const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
+      const updatedCall = await client.calls(effectiveCallSid).update({ status: 'completed' });
+      twilioTerminated = true;
+      console.log(`[TwilioService] Twilio REST API disconnected call ${effectiveCallSid}: status=${updatedCall.status}`);
+    } catch (err: any) {
+      console.warn(`[TwilioService] Notice while disconnecting call ${effectiveCallSid} via Twilio REST API: ${err?.message || err}`);
+      twilioNotice = err?.message;
+    }
+  }
+
+  if (session) {
+    clearTwilioSession(session.sessionId, 'Terminated by frontline specialist via End Call', 'completed');
+  }
+
+  if (targetPhone) {
+    for (const s of activeSessions.values()) {
+      if (s.customerPhone === targetPhone && !TERMINAL_TWILIO_STATUSES.has(s.status)) {
+        clearTwilioSession(s.sessionId, 'Terminated by frontline specialist (phone cleanup)', 'completed');
+      }
+    }
+  }
+
+  return {
+    success: true,
+    callSid: effectiveCallSid || undefined,
+    sessionId: session?.sessionId || targetSessionId || undefined,
+    status: 'completed',
+    message: twilioTerminated
+      ? `Twilio call ${effectiveCallSid} disconnected via Twilio REST API and session lock released.`
+      : `Active call session lock released.${twilioNotice ? ` (${twilioNotice})` : ''}`
+  };
+}
+
+/**
+ * Endpoint: End Call Trigger (POST /api/twilio/end-call)
+ */
+export async function handleTwilioEndCallRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: Record<string, string | undefined>
+) {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    res.end(JSON.stringify({ success: false, error: 'METHOD_NOT_ALLOWED' }));
+    return;
+  }
+
+  let bodyStr = '';
+  req.on('data', (chunk) => {
+    bodyStr += chunk;
+  });
+
+  req.on('end', async () => {
+    try {
+      let payload: any = {};
+      if (bodyStr) {
+        try {
+          payload = JSON.parse(bodyStr);
+        } catch {
+          const params = new URLSearchParams(bodyStr);
+          payload = {
+            callSid: params.get('callSid'),
+            sessionId: params.get('sessionId'),
+            phone: params.get('phone')
+          };
+        }
+      }
+      const result = await terminateTwilioCall(payload, env);
+      res.statusCode = 200;
+      res.end(JSON.stringify(result));
+    } catch (err: any) {
+      console.error('[TwilioService:EndCall] Error ending call:', err);
+      res.statusCode = 500;
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: 'END_CALL_FAILED',
+          message: err?.message || 'Failed to terminate Twilio call'
+        })
+      );
+    }
+  });
 }
 
 /**

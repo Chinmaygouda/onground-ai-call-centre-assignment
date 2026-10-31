@@ -17,6 +17,10 @@ import {
   hasActiveCallForLeadOrPhone,
   cleanupExpiredSessions,
   handleTwilioSampleTwiml,
+  clearTwilioSession,
+  terminateTwilioCall,
+  verifyAndClearStaleActiveCall,
+  TERMINAL_TWILIO_STATUSES,
   StructuredAiTurnResponse,
   TwilioVoiceSession
 } from '../server/twilioService';
@@ -666,6 +670,121 @@ async function runTwilioTestSuite() {
   assert(webSession?.product === 'Ortho GRID', 'Product accurately tracked as Ortho GRID');
 
   updateTwilioSessionStatus(webCallResult.sessionId!, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 29: Idempotent Session Cleanup & Terminal Status Set
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 29] Idempotent Active Session Cleanup & Status Callback Handling');
+  assert(TERMINAL_TWILIO_STATUSES.has('completed'), 'Terminal set includes completed');
+  assert(TERMINAL_TWILIO_STATUSES.has('failed'), 'Terminal set includes failed');
+  assert(TERMINAL_TWILIO_STATUSES.has('busy'), 'Terminal set includes busy');
+  assert(TERMINAL_TWILIO_STATUSES.has('no-answer'), 'Terminal set includes no-answer');
+  assert(TERMINAL_TWILIO_STATUSES.has('canceled'), 'Terminal set includes canceled');
+
+  const testSession = createTwilioVoiceSession({
+    leadId: 'lead-test-29',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  updateTwilioSessionStatus(testSession.sessionId, 'customer_answered', { answeredAt: Date.now() - 5000 });
+
+  // First cleanup call
+  const cleaned1 = clearTwilioSession(testSession.sessionId, 'First terminal callback', 'completed');
+  assert(cleaned1 !== undefined, 'First cleanup returns session');
+  assert(cleaned1?.status === 'completed', 'Status changed to completed');
+  assert(typeof cleaned1?.endedAt === 'number', 'endedAt timestamp set');
+  const originalEndedAt = cleaned1?.endedAt;
+
+  // Second cleanup call (idempotent repeated callback)
+  const cleaned2 = clearTwilioSession(testSession.sessionId, 'Duplicate repeated callback', 'completed');
+  assert(cleaned2 !== undefined, 'Second cleanup returns cleanly');
+  assert(cleaned2?.endedAt === originalEndedAt, 'Idempotent repeated cleanup preserves original endedAt without re-mutation');
+  assert(!hasActiveCallForLeadOrPhone('+917204104491'), 'Session lock is released after clearTwilioSession');
+
+  // --------------------------------------------------------------------------
+  // TEST 30: Stale Session Auto-Recovery on Inactivity (>60s)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 30] Stale Session Auto-Recovery on Inactivity (>60s)');
+  const staleSession = createTwilioVoiceSession({
+    leadId: 'lead-test-30',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  updateTwilioSessionStatus(staleSession.sessionId, 'in-progress');
+
+  // Verify it is initially treated as active
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Fresh session is active');
+
+  // Artificially age session by 65 seconds to simulate a call where customer hung up without callback
+  staleSession.updatedAt = Date.now() - 65000;
+
+  // hasActiveCallForLeadOrPhone must detect staleness and auto-clear it
+  const isStillActive = hasActiveCallForLeadOrPhone('+917204104491');
+  assert(isStillActive === false, 'Stale session (>60s) is auto-cleared and does NOT block calls');
+  assert(staleSession.status === 'completed', 'Stale session status automatically updated to completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 31: Pre-Call Verification & Force-Clear Flag
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 31] Pre-Call Verification & Force-Clear Flag (clearStale: true)');
+  const lockedSession = createTwilioVoiceSession({
+    leadId: 'lead-test-31',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  updateTwilioSessionStatus(lockedSession.sessionId, 'customer_answered');
+
+  // verifyAndClearStaleActiveCall with forceClear=true
+  const clearResult = await verifyAndClearStaleActiveCall('+917204104491', testEnv, true);
+  assert(clearResult.hasActiveCall === false, 'Force clear releases active call lock immediately');
+  assert(lockedSession.status === 'completed', 'Locked session forced to completed status');
+
+  // Test initiateTwilioOutboundCall with clearStale: true
+  const retryCall = await initiateTwilioOutboundCall(
+    {
+      to: '+917204104491',
+      clientName: 'Chinmay',
+      clearStale: true
+    },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(retryCall.success === true, 'New call succeeds with clearStale: true without getting blocked');
+  updateTwilioSessionStatus(retryCall.sessionId!, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 32: Physical Call Termination via terminateTwilioCall & Lock Release
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 32] Physical Call Termination via terminateTwilioCall & Lock Release');
+  const activeForTerm = createTwilioVoiceSession({
+    leadId: 'lead-test-32',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  bindTwilioCallSid(activeForTerm.sessionId, 'CASIM_term_test_1234');
+  updateTwilioSessionStatus(activeForTerm.sessionId, 'in-progress', { answeredAt: Date.now() - 12000 });
+
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Active call registered before termination');
+
+  // Terminate call using terminateTwilioCall (End Call button action)
+  const termResult = await terminateTwilioCall(
+    {
+      callSid: 'CASIM_term_test_1234',
+      sessionId: activeForTerm.sessionId,
+      phone: '+917204104491'
+    },
+    testEnv
+  );
+
+  assert(termResult.success === true, 'terminateTwilioCall returns success=true');
+  assert(termResult.status === 'completed', 'terminateTwilioCall marks status as completed');
+  assert(activeForTerm.status === 'completed', 'Session status set to completed');
+  assert(activeForTerm.durationSeconds >= 12, 'Call duration accurately recorded');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Active session lock released; ready for new call');
+
 
   // --------------------------------------------------------------------------
   // SUMMARY

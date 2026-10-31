@@ -601,11 +601,44 @@ export const CallingModal: React.FC = () => {
                           name: callState.contactName,
                           phone: callState.contactPhone,
                           mode: 'TWILIO_AI',
+                          isTrialSample: false,
+                          product: callState.productInterest,
+                          value: callState.expectedValue,
+                          force: true,
+                          clearStale: true
+                        });
+                      }, 120);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#059669',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                    title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
+                  >
+                    Clear Stale Session &amp; Retry
+                  </button>
+                  <button
+                    onClick={() => {
+                      endCall();
+                      setTimeout(() => {
+                        startCall({
+                          name: callState.contactName,
+                          phone: callState.contactPhone,
+                          mode: 'TWILIO_AI',
                           isTrialSample: true,
                           product: callState.productInterest,
-                          value: callState.expectedValue
+                          value: callState.expectedValue,
+                          force: true,
+                          clearStale: true
                         });
-                      }, 100);
+                      }, 120);
                     }}
                     style={{
                       padding: '6px 12px',
@@ -631,9 +664,11 @@ export const CallingModal: React.FC = () => {
                           mode: 'TWILIO_AI',
                           isTrialSample: false,
                           product: callState.productInterest,
-                          value: callState.expectedValue
+                          value: callState.expectedValue,
+                          force: true,
+                          clearStale: true
                         });
-                      }, 100);
+                      }, 120);
                     }}
                     style={{
                       padding: '6px 12px',
@@ -659,8 +694,9 @@ export const CallingModal: React.FC = () => {
                       cursor: 'pointer',
                       fontSize: '11px'
                     }}
+                    title="Close modal and release any active session lock"
                   >
-                    Close
+                    End &amp; Close
                   </button>
                 </div>
               </div>
@@ -792,7 +828,7 @@ export const CallingModal: React.FC = () => {
               <button
                 className={`${styles.actionBtn} ${styles.endCallBtn}`}
                 onClick={endCall}
-                title="End Call"
+                title="End Call (Disconnects live telephone call & releases session lock)"
               >
                 <PhoneOff size={22} />
               </button>

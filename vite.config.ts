@@ -10,7 +10,8 @@ import {
   handleTwilioVoiceWebhook,
   handleTwilioAiTurnWebhook,
   handleTwilioStatusCallbackWebhook,
-  handleTwilioSampleTwiml
+  handleTwilioSampleTwiml,
+  handleTwilioEndCallRequest
 } from './server/twilioService';
 
 function geminiLiveServerPlugin(): Plugin {
@@ -57,6 +58,10 @@ function geminiLiveServerPlugin(): Plugin {
       server.middlewares.use('/api/twilio/call', (req, res) => {
         const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
         handleTwilioCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/end-call', (req, res) => {
+        const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
+        handleTwilioEndCallRequest(req, res, env);
       });
       server.middlewares.use('/api/twilio/call-status', (req, res) => {
         const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
@@ -123,6 +128,10 @@ function geminiLiveServerPlugin(): Plugin {
       server.middlewares.use('/api/twilio/call', (req, res) => {
         const env = loadEnv('production', process.cwd(), '');
         handleTwilioCallRequest(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/end-call', (req, res) => {
+        const env = loadEnv('production', process.cwd(), '');
+        handleTwilioEndCallRequest(req, res, env);
       });
       server.middlewares.use('/api/twilio/call-status', (req, res) => {
         const env = loadEnv('production', process.cwd(), '');

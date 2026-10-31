@@ -26,6 +26,8 @@ interface CallingContextType {
     notes?: string;
     isTrialSample?: boolean;
     sampleTwiMLUrl?: string;
+    clearStale?: boolean;
+    force?: boolean;
   }) => Promise<void>;
   endCall: () => void;
   toggleMute: () => void;
@@ -296,6 +298,50 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
+  // Handle browser refresh, tab close, and stale active session recovery
+  useEffect(() => {
+    // 1. Recover / clear any stale session left in sessionStorage from a previous page load
+    const storedSession = sessionStorage.getItem('onground_active_twilio_session');
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession);
+        console.log('[Calling:SessionRecovery] Found unfinalized Twilio session from previous browser load:', parsed);
+        fetch('/api/twilio/end-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callSid: parsed.callSid,
+            sessionId: parsed.sessionId,
+            phone: parsed.phone
+          })
+        }).catch(() => {}).finally(() => {
+          sessionStorage.removeItem('onground_active_twilio_session');
+        });
+      } catch {
+        sessionStorage.removeItem('onground_active_twilio_session');
+      }
+    }
+
+    // 2. Transmit beacon on beforeunload to release active session lock if browser is refreshed/closed
+    const handleBeforeUnload = () => {
+      const activeRaw = sessionStorage.getItem('onground_active_twilio_session');
+      if (activeRaw) {
+        try {
+          const parsed = JSON.parse(activeRaw);
+          if (navigator.sendBeacon) {
+            const blob = new Blob([JSON.stringify(parsed)], { type: 'application/json' });
+            navigator.sendBeacon('/api/twilio/end-call', blob);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Clean up Web Audio & Stream on unmount or end of call
   const stopMediaCapture = () => {
     if (animationFrameRef.current) {
@@ -483,7 +529,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     buyingSignals,
     notes,
     isTrialSample,
-    sampleTwiMLUrl
+    sampleTwiMLUrl,
+    clearStale,
+    force
   }: {
     name: string;
     phone: string;
@@ -495,6 +543,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     notes?: string;
     isTrialSample?: boolean;
     sampleTwiMLUrl?: string;
+    clearStale?: boolean;
+    force?: boolean;
   }) => {
     // 1. Prevent duplicate calls if a call is already active
     if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
@@ -780,7 +830,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             buyingSignals: buyingSignals || [],
             notes: notes || '',
             isTrialSample: Boolean(isTrialSample),
-            sampleTwiMLUrl
+            sampleTwiMLUrl,
+            clearStale: clearStale ?? true,
+            force: Boolean(force)
           })
         });
 
@@ -798,7 +850,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               buyingSignals: buyingSignals || [],
               notes: notes || '',
               isTrialSample: Boolean(isTrialSample),
-              sampleTwiMLUrl
+              sampleTwiMLUrl,
+              clearStale: clearStale ?? true,
+              force: Boolean(force)
             })
           });
         }
@@ -838,6 +892,18 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         if (!isSimulation && callSid) {
           twilioCallSidRef.current = callSid;
+        }
+
+        try {
+          sessionStorage.setItem('onground_active_twilio_session', JSON.stringify({
+            sessionId,
+            callSid: isSimulation ? undefined : callSid,
+            phone,
+            name,
+            startedAt: Date.now()
+          }));
+        } catch {
+          // ignore storage quota issues
         }
 
         setCallState((prev) => ({
@@ -955,6 +1021,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               currentStatus === 'failed' ||
               currentStatus === 'canceled'
             ) {
+              sessionStorage.removeItem('onground_active_twilio_session');
+              twilioCallSidRef.current = null;
               if (twilioPollIntervalRef.current) {
                 clearInterval(twilioPollIntervalRef.current);
                 twilioPollIntervalRef.current = null;
@@ -1253,7 +1321,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const endCall = () => {
-    console.log(`[Calling:WebRTC] Tab ${tabSessionId.current} ending call`);
+    console.log(`[Calling] Tab ${tabSessionId.current} ending call`);
     if (exotelPollIntervalRef.current) {
       clearInterval(exotelPollIntervalRef.current);
       exotelPollIntervalRef.current = null;
@@ -1262,6 +1330,40 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       clearInterval(twilioPollIntervalRef.current);
       twilioPollIntervalRef.current = null;
     }
+
+    // Physical Twilio Call Termination & Active Session Lock Release
+    const currentMode = callStateRef.current.mode;
+    const currentTwilioSid = twilioCallSidRef.current || callStateRef.current.twilioCallSid;
+    const currentSessionId = callStateRef.current.voiceSessionId;
+    const currentPhone = callStateRef.current.contactPhone;
+
+    if (currentMode === 'TWILIO_AI' || currentTwilioSid || currentSessionId) {
+      console.log(`[Calling:TwilioAI] End Call invoked. Sending termination request to backend: SID=${currentTwilioSid}, SessionId=${currentSessionId}, Phone=${currentPhone}`);
+      sessionStorage.removeItem('onground_active_twilio_session');
+      twilioCallSidRef.current = null;
+
+      fetch('/api/twilio/end-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callSid: currentTwilioSid,
+          sessionId: currentSessionId,
+          phone: currentPhone
+        })
+      }).catch((fetchErr) => {
+        console.warn('[Calling:TwilioAI] /api/twilio/end-call failed, attempting Netlify fallback:', fetchErr);
+        fetch('/.netlify/functions/twilio-end-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callSid: currentTwilioSid,
+            sessionId: currentSessionId,
+            phone: currentPhone
+          })
+        }).catch(() => {});
+      });
+    }
+
     stopMediaCapture();
     pendingIceCandidatesRef.current = [];
 
@@ -1269,7 +1371,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     remotePeerTabIdRef.current = null;
     callStateRef.current = {
       ...callStateRef.current,
-      lifecycle: 'ENDED'
+      lifecycle: 'ENDED',
+      aiResponseText: 'Call terminated'
     };
 
     setCallState((prev) => ({
