@@ -21,6 +21,9 @@ interface CallingContextType {
     mode?: CallEngineMode;
     value?: number;
     product?: string;
+    leadId?: string;
+    buyingSignals?: string[];
+    notes?: string;
   }) => Promise<void>;
   endCall: () => void;
   toggleMute: () => void;
@@ -467,13 +470,19 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     phone,
     mode = 'WEBRTC_PEER',
     value,
-    product
+    product,
+    leadId,
+    buyingSignals,
+    notes
   }: {
     name: string;
     phone: string;
     mode?: CallEngineMode;
     value?: number;
     product?: string;
+    leadId?: string;
+    buyingSignals?: string[];
+    notes?: string;
   }) => {
     // 1. Prevent duplicate calls if a call is already active
     if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
@@ -518,17 +527,220 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       productInterest: product,
       durationSeconds: 0,
       isMuted: false,
-      exotelStatus: mode === 'EXOTEL_REAL' ? 'initiating' : undefined,
-      isConfigured: mode === 'EXOTEL_REAL' ? true : undefined,
+      exotelStatus: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? 'initiating' : undefined,
+      isConfigured: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? true : undefined,
       aiResponseText:
         mode === 'WEBRTC_PEER'
           ? 'Broadcasting in-app call to peer tabs...'
           : mode === 'EXOTEL_REAL'
           ? 'Requesting Exotel outbound PSTN connection...'
+          : mode === 'EXOTEL_AI'
+          ? 'Initiating AI Outbound Voice Call via Exotel Connect Voice AI...'
           : 'Connecting secure audio stream...'
     });
 
     await startAudioVisualizer();
+
+    if (mode === 'EXOTEL_AI') {
+      const maskedPhone = phone ? `${phone.slice(0, 3)}***${phone.slice(-4)}` : '[NONE]';
+      console.log(`[Calling:ExotelAI] Initiating AI Outbound Voice call for contact "${name}" (${maskedPhone}) regarding "${product || 'General Enquiry'}"`);
+
+      const endpoint = '/api/exotel/call';
+      try {
+        let response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: phone,
+            clientName: name,
+            mode: 'EXOTEL_AI',
+            leadId: leadId || 'lead-1',
+            product: product || 'Ortho GRID Mattress',
+            value,
+            buyingSignals: buyingSignals || [],
+            notes: notes || ''
+          })
+        });
+
+        if (response.status === 404) {
+          console.warn('[Calling:ExotelAI] /api/exotel/call returned 404, attempting fallback to /.netlify/functions/exotel-call');
+          response = await fetch('/.netlify/functions/exotel-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: phone,
+              clientName: name,
+              mode: 'EXOTEL_AI',
+              leadId: leadId || 'lead-1',
+              product: product || 'Ortho GRID Mattress',
+              value,
+              buyingSignals: buyingSignals || [],
+              notes: notes || ''
+            })
+          });
+        }
+
+        const data = await response.json();
+        console.log(`[Calling:ExotelAI] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}`);
+
+        if (!response.ok || !data.success) {
+          const displayError = data.message || 'AI Call initiation failed';
+          const detailedExplanation = data.troubleshooting ? `${displayError} — ${data.troubleshooting}` : displayError;
+
+          setCallState((prev) => ({
+            ...prev,
+            lifecycle: data.configured === false ? 'DIALING' : 'ENDED',
+            isConfigured: data.configured !== false,
+            providerError: displayError,
+            aiResponseText: detailedExplanation
+          }));
+          return;
+        }
+
+        const callSid = data.callSid;
+        const sessionId = data.sessionId;
+        exotelCallSidRef.current = callSid;
+
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'RINGING',
+          exotelCallSid: callSid,
+          voiceSessionId: sessionId,
+          exotelStatus: 'calling_customer',
+          exotelCallerId: data.callerId,
+          aiResponseText: `Exotel dialing customer mobile (${maskedPhone}) directly. Employee phone is bypassed.`
+        }));
+
+        if (exotelPollIntervalRef.current) {
+          clearInterval(exotelPollIntervalRef.current);
+        }
+
+        let isBridgeConnected = false;
+
+        exotelPollIntervalRef.current = window.setInterval(async () => {
+          try {
+            const queryParams = new URLSearchParams();
+            if (callSid) queryParams.set('callSid', callSid);
+            if (sessionId) queryParams.set('sessionId', sessionId);
+
+            let statusRes = await fetch(`/api/exotel/call-status?${queryParams.toString()}`);
+            if (statusRes.status === 404) {
+              statusRes = await fetch(`/.netlify/functions/exotel-status?${queryParams.toString()}`);
+            }
+            if (!statusRes.ok) return;
+            const statusData = await statusRes.json();
+            if (!statusData.success) return;
+
+            const currentStatus = statusData.status;
+
+            if (statusData.transcript && Array.isArray(statusData.transcript)) {
+              const fullTranscript = statusData.transcript
+                .map((t: { speaker: string; text: string }) => `${t.speaker === 'assistant' ? 'AI Voicebot' : name}: ${t.text}`)
+                .join('\n');
+              setAiSpeechTranscript(fullTranscript);
+              setCallState((prev) => ({ ...prev, aiTranscript: fullTranscript }));
+            }
+
+            if (currentStatus === 'calling_customer') {
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'RINGING',
+                exotelStatus: 'calling_customer',
+                aiResponseText: `Exotel dialing customer (${maskedPhone}). Waiting for answer...`
+              }));
+            } else if (
+              currentStatus === 'customer_answered' ||
+              currentStatus === 'ai_speaking' ||
+              currentStatus === 'ai_listening' ||
+              currentStatus === 'connected'
+            ) {
+              if (!isBridgeConnected) {
+                isBridgeConnected = true;
+                timerIntervalRef.current = window.setInterval(() => {
+                  setCallState((prev) => ({
+                    ...prev,
+                    durationSeconds: prev.durationSeconds + 1
+                  }));
+                }, 1000);
+              }
+
+              let responseSnippet = 'Customer answered. AI Voicebot connected with Gemini Live.';
+              if (currentStatus === 'ai_speaking') {
+                responseSnippet = statusData.transcriptSnippet ? `AI: "${statusData.transcriptSnippet}"` : 'AI Assistant speaking...';
+              } else if (currentStatus === 'ai_listening') {
+                responseSnippet = 'Listening to customer speech...';
+              }
+
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'CONNECTED',
+                exotelStatus: currentStatus,
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: responseSnippet
+              }));
+            } else if (
+              currentStatus === 'completed' ||
+              currentStatus === 'busy' ||
+              currentStatus === 'no_answer' ||
+              currentStatus === 'failed' ||
+              currentStatus === 'cancelled'
+            ) {
+              if (exotelPollIntervalRef.current) {
+                clearInterval(exotelPollIntervalRef.current);
+                exotelPollIntervalRef.current = null;
+              }
+              if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+              }
+
+              const finalDuration = statusData.duration || callStateRef.current.durationSeconds;
+              const mins = Math.floor(finalDuration / 60);
+              const secs = finalDuration % 60;
+              const durationStr = `${mins}m ${secs}s`;
+
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'ENDED',
+                exotelStatus: currentStatus,
+                durationSeconds: finalDuration,
+                recordingUrl: statusData.recordingUrl || prev.recordingUrl,
+                aiResponseText: `AI Call finished with status: ${currentStatus.replace('_', ' ').toUpperCase()}`
+              }));
+
+              const nowTimeStr = `Today ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+              recordCallInteraction({
+                id: `call-ai-${callSid || Date.now()}`,
+                name,
+                initials,
+                timeText: nowTimeStr,
+                duration: durationStr,
+                type: 'outbound',
+                phone,
+                sopScore: 98,
+                greetingPassed: true,
+                provider: 'exotel_ai',
+                callMode: 'ai_voicebot',
+                isDemoRecord: false,
+                callSid,
+                notes: `AI Voicebot Outbound Call to ${name} (${phone}) regarding ${product || 'Sleep Company products'} - Status: ${currentStatus}. Duration: ${durationStr}. Call SID: ${callSid}. ${statusData.transcriptSnippet ? `Recent snippet: ${statusData.transcriptSnippet}` : ''}`
+              });
+            }
+          } catch (pollErr) {
+            console.warn('[Calling:ExotelAI] Status polling error:', pollErr);
+          }
+        }, 2000);
+      } catch (err: any) {
+        console.error('[Calling:ExotelAI] Error calling endpoint:', err);
+        setCallState((prev) => ({
+          ...prev,
+          lifecycle: 'ENDED',
+          providerError: err?.message || 'Network error reaching backend.',
+          aiResponseText: 'Network error communicating with telephony service.'
+        }));
+      }
+      return;
+    }
 
     if (mode === 'EXOTEL_REAL') {
       const maskedPhone = phone ? `${phone.slice(0, 3)}***${phone.slice(-4)}` : '[NONE]';

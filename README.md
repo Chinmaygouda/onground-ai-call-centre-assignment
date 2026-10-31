@@ -121,23 +121,104 @@ To satisfy this requirement without requiring reviewer API keys (e.g., Twilio / 
   - **Live Synchronization & Cache Invalidation (Requirement H & I)**:
     - Shared singleton `businessDataProvider` invalidates caches on price mutations.
     - Automatic semantic version increments (e.g., `2026.10.1` -> `2026.10.2`) with UTC audit timestamps.
-### Engine 5: Real Telephone Network Calling via Exotel Telephony API (`PSTN Outbound`)
-- **Direct Cellular Calling to Client Ashray K (`+917338626120`)**: Triggers an authentic telephone call over the public switched telephone network (PSTN) using the official Exotel Voice Connect API (`POST /v1/Accounts/{account_sid}/Calls/connect.json`).
-- **Two-Legged Outbound Workflow**:
+### Engine 5: Dual-Mode Enterprise Telephone Network Calling via Exotel Telephony API
+
+The application provides two distinct, coexisting outbound telephone calling modes accessible directly from every customer lead across the application (Planner "Calls to make", Leads Modal, and Floating Action Pill):
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 DUAL-MODE TELEPHONY ARCHITECTURE                                       │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  MODE 1: CALL MYSELF (Employee-First PSTN Bridging)
+  ┌──────────────┐       1. POST /Calls/connect (From: Employee, To: Customer)       ┌─────────────────┐
+  │  Agent App   │ ─────────────────────────────────────────────────────────────────▶ │ Exotel PSTN API │
+  │  (Arvind R)  │ ◀───────────────────────────────────────────────────────────────── │                 │
+  └──────────────┘       2. Exotel dials Employee Phone FIRST                         └────────┬────────┘
+                                                                                               │
+                                ┌──────────────────────────────────────────────────────────────┘
+                                ▼
+                         ┌──────────────┐   3. Employee Answers   ┌──────────────┐   4. Both Bridged
+                         │   Employee   │ ──────────────────────▶ │   Customer   │ ◀─────────────────
+                         │ Physical Dev │                         │ (Ashray K)   │
+                         └──────────────┘                         └──────────────┘
+
+  MODE 2: CALL USING AI AGENT (Customer-Direct AI Outbound with Gemini Live Audio Bridge)
+  ┌──────────────┐       1. POST /Calls/connect (From: Customer, StreamUrl: WSS)      ┌─────────────────┐
+  │  Agent App   │ ─────────────────────────────────────────────────────────────────▶ │ Exotel Voice AI │
+  │ (Lead Context)│                                                                   └────────┬────────┘
+  └──────────────┘                                                                             │
+                                                                                               │ 2. Dials Customer
+                                                                                               │    DIRECTLY (Employee
+                                                                                               │    is NEVER dialed)
+                                                                                               ▼
+                                                                                      ┌─────────────────┐
+                                                                                      │ Customer Phone  │
+                                                                                      │ (Ashray K)      │
+                                                                                      └────────┬────────┘
+                                                                                               │ 3. Customer Answers
+                                                                                               ▼
+  ┌───────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │                              BIDIRECTIONAL AUDIO WEBSOCKET STREAM                                    │
+  │                                                                                                       │
+  │   Exotel PSTN Audio             server/audioBridge.ts                Gemini Live Voicebot             │
+  │   (8kHz G.711 Mu-law)           Resampler & ITU-T Codec              (16kHz/24kHz Linear PCM)         │
+  │                                                                                                       │
+  │   Customer Spoken Audio   ──▶   8kHz Mu-law ──▶ 16kHz PCM    ──▶     Gemini Input (audio/pcm;16k)     │
+  │   Exotel Voicebot Media   ◀──   8kHz Mu-law ◀── 24kHz PCM    ◀──     Gemini Spoken Reply              │
+  │                                                                                                       │
+  │   Customer Interruption   ──▶   RMS Energy > 0.08 Threshold  ──▶     Sends 'clear' event to Exotel    │
+  │                                                                       (Flushes buffered audio)        │
+  └───────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Mode 1: Call Myself (`EXOTEL_REAL`)
+- **Preserved Existing Workflow**: Uses Exotel's Connect Two Numbers API (`POST /v1/Accounts/{account_sid}/Calls/connect.json`).
+- **Two-Legged Outbound Progression**:
   1. **Leg A**: Exotel dials the frontline employee's physical mobile device (`EXOTEL_AGENT_PHONE`).
-  2. **Leg B**: Once the employee answers, Exotel dials the client **Ashray K** at `+917338626120` through the configured virtual ExoPhone (`EXOTEL_CALLER_ID`) and bridges the audio.
+  2. **Leg B**: Once the employee answers, Exotel dials the customer (**Ashray K** at `+917338626120`) through the configured virtual ExoPhone (`EXOTEL_CALLER_ID`) and bridges both phones.
+- **Guard Rails**: Enforces that `EXOTEL_AGENT_PHONE` is configured and rejects accidental self-calls if `EXOTEL_AGENT_PHONE === clientPhone`.
+
+#### Mode 2: Call Using AI Agent (`EXOTEL_AI`)
+- **Customer-First Direct Outbound Calling**:
+  - Employee's phone is **NEVER** dialed.
+  - Exotel Connect Voice AI API (`POST /v1/Accounts/{account_sid}/Calls/connect`) initiates an outbound call directly to the customer's phone (`From: Customer phone`, `CallerId: ExoPhone`).
+  - Sets `StreamUrl` to the public secure WSS endpoint (`wss://.../exotel-voicebot?sessionId=vses_...`).
+  - Sets `StreamType=bidirectional`.
+  - Configures terminal and answered callback events (`StatusCallbackEvents: ['answered', 'completed', 'busy', 'failed', 'no-answer']`).
+- **Dedicated Node.js WebSocket Voice Service (`server/exotelVoiceServer.ts`)**:
+  - Accepts secure WebSocket connections from Exotel on `/exotel-voicebot`.
+  - Validates opaque session token (`sessionId`) to retrieve customer lead context (customer name, enquired mattress, ICP score, buying signals, and price).
+  - Handles Exotel Voicebot event lifecycle:
+    - `connected`: Acknowledges stream protocol.
+    - `start`: Binds `streamSid`, triggers personalized Sleep Company greeting (`generateVoiceGreeting`), and sets session state to `ai_speaking`.
+    - `media`: Converts 8kHz G.711 mu-law customer audio chunks to 16kHz linear PCM, calculates RMS speech energy, and feeds Gemini Live.
+    - `mark`: Listens for playback completion marks (`greeting_complete`, `response_complete`) to transition state smoothly to `ai_listening`.
+    - `clear`: Flushes Exotel's audio buffer immediately upon customer speech interruption (barge-in).
+    - `dtmf`: Processes telephone keypad digits if dialed.
+    - `stop`: Gracefully closes stream, persists final call duration, outcome, and full multi-turn transcript to call history.
+- **Audio Processing & Resampling Bridge (`server/audioBridge.ts`)**:
+  - **ITU-T G.711 Mu-Law Codec**: Full 16-bit linear PCM encoder and decoder with standard 14-bit to 16-bit scaling (`((t << exponent) - 0x84) << 2`), achieving high acoustic fidelity (`maxDelta < 410`).
+  - **Sample Rate Converters**:
+    - Inbound: Resamples 8kHz G.711 mu-law telephone audio to 16kHz linear PCM for Gemini Live input.
+    - Outbound: Resamples 24kHz linear PCM Gemini voice responses to 8kHz G.711 mu-law chunks formatted as Exotel Voicebot media events (`{"event": "media", "streamSid": "...", "media": {"payload": "<base64>"}}`).
+  - **Barge-in / Interruption Detection**: Computes PCM RMS energy. When customer speaks (`RMS > 0.08`) while the AI is speaking, it sends an immediate `{"event": "clear", "streamSid": "..."}` packet to flush Exotel's output buffer and switches state to `ai_listening`.
+- **Verified Sleep Company Business Context Grounding**:
+  - Greeting introduces the AI as an assistant calling on behalf of **The Sleep Company** regarding the customer's exact enquired mattress (e.g. *Ortho GRID*).
+  - Integrates verified Sleep Company product catalog, 0% No-Cost EMI plans, 100-night risk-free trial terms, and 10-year warranty policies via `IBusinessDataProvider`.
+  - Zero hallucination guarantee: Never invents prices or unverified promotions.
 - **Telecom Regulatory Reality & Billing Integrity**:
-  - **Account Billed**: The business's Exotel account pays for both legs (Leg A and Leg B) from its account balance/credits.
+  - **Account Billed**: The business's Exotel account pays for outbound call minutes and Voicebot streaming.
   - **Recipient is Free**: Under Indian Telecom Regulatory Authority (TRAI) Calling Party Pays (CPP) rules, mobile subscribers are never charged for receiving incoming calls. Ashray K is not charged.
-  - **No Collect Calling**: Cellular reverse-charge or collect-calling does not exist in Indian mobile telecommunications. The application does not fabricate or claim that the client pays for the call.
 - **Strict Security & Zero Secrets in Client**:
-  - `EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_CALLER_ID`, and `EXOTEL_AGENT_PHONE` reside exclusively on the server (`server/exotelService.ts` in Vite dev mode, `netlify/functions/exotel-call.ts` and `exotel-status.ts` on Netlify).
-  - No `VITE_` prefix; zero tokens bundled into frontend JavaScript.
-  - Guard against accidental self-calls: Rejects immediately if `EXOTEL_AGENT_PHONE === clientPhone`.
-- **Durable Call History & Live Polling**:
-  - Live modal polls `/api/exotel/call-status` every 2.5 seconds, updating real-time telephony progression (`calling employee`, `employee answered`, `calling client`, `connected`, `completed`).
-  - Completed call logs, durations, and genuine provider recordings are saved durably to `localStorage` (`onground_recent_calls`) and survive serverless restarts.
-  - Pre-seeded records are clearly labeled as `isDemoRecord: true` with provider `'demo'` to ensure absolute transparency.
+  - All Exotel API credentials (`EXOTEL_ACCOUNT_SID`, `EXOTEL_API_KEY`, `EXOTEL_API_TOKEN`, `EXOTEL_CALLER_ID`, `EXOTEL_AGENT_PHONE`) and Gemini keys reside exclusively on the server.
+  - Public WebSocket endpoints use opaque random session IDs (`vses_<nanoId>`), preventing customer phone numbers or private lead data from leaking in URLs or public logs.
+  - Safe error masking: All logged phone numbers and API messages are sanitized (`+91*****6120`).
+- **Durable Call History & Live Tracking**:
+  - Calling modal displays dedicated `EXOTEL_AI` status progression: `Calling Customer Mobile` ──▶ `Customer Answered` ──▶ `AI Speaking` / `Listening`.
+  - Full conversational transcript and duration are saved durably to `localStorage` (`onground_recent_calls`).
+  - Differentiates call types in Recent Calls with an **AI Voicebot** pill badge.
+
 
 ---
 

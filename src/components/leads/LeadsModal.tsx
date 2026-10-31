@@ -8,7 +8,8 @@ import {
   FileText,
   Shield,
   Phone,
-  AlertCircle
+  AlertCircle,
+  Bot
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
@@ -48,14 +49,34 @@ export const LeadsModal: React.FC = () => {
   };
 
   const handleExotelCall = () => {
-    console.log(`[LeadsModal] Exotel Call button clicked for lead: ${currentLead.name}`);
+    console.log(`[LeadsModal] Call Myself (Exotel) button clicked for lead: ${currentLead.name}`);
     closeLeadsModal();
     startCall({
       name: currentLead.name,
       phone: currentLead.phone,
       mode: 'EXOTEL_REAL',
       value: currentLead.price,
-      product: currentLead.product
+      product: currentLead.product,
+      leadId: currentLead.id
+    });
+  };
+
+  const handleAiVoiceCall = () => {
+    console.log(`[LeadsModal] Call Using AI Agent button clicked for lead: ${currentLead.name}`);
+    closeLeadsModal();
+    startCall({
+      name: currentLead.name,
+      phone: currentLead.phone,
+      mode: 'EXOTEL_AI',
+      value: currentLead.price,
+      product: currentLead.product,
+      leadId: currentLead.id,
+      buyingSignals: [
+        currentLead.signals.financing,
+        currentLead.signals.quotation,
+        currentLead.signals.warranty
+      ].filter(Boolean),
+      notes: currentLead.notes
     });
   };
 
@@ -254,28 +275,56 @@ export const LeadsModal: React.FC = () => {
 
           {/* Direct Calling Buttons */}
           <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+            {/* Mode 1: Call Myself (Two-Legged Exotel PSTN) */}
             <button
               style={{
                 flex: 1,
                 backgroundColor: '#0284c7',
                 color: '#ffffff',
-                padding: '10px',
+                padding: '10px 8px',
                 borderRadius: '9999px',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
+                gap: '6px',
                 boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)',
                 cursor: 'pointer',
-                border: 'none'
+                border: 'none',
+                whiteSpace: 'nowrap'
               }}
               onClick={handleExotelCall}
-              title={`Call ${currentLead.name} via Exotel Telephony (Real Phone)`}
+              title={`Mode 1 (Call Myself): Exotel calls your phone first, then bridges ${currentLead.name}`}
             >
-              <Phone size={14} />
-              <span>Exotel call</span>
+              <Phone size={13} />
+              <span>Call Myself</span>
+            </button>
+
+            {/* Mode 2: Call Using AI Agent (Exotel Connect Voice AI) */}
+            <button
+              style={{
+                flex: 1.2,
+                backgroundColor: '#7c3aed',
+                color: '#ffffff',
+                padding: '10px 8px',
+                borderRadius: '9999px',
+                fontSize: '12px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 10px rgba(124, 58, 237, 0.25)',
+                cursor: 'pointer',
+                border: 'none',
+                whiteSpace: 'nowrap'
+              }}
+              onClick={handleAiVoiceCall}
+              title={`Mode 2 (Call Using AI Agent): Exotel dials ${currentLead.name} directly and connects Gemini Live`}
+            >
+              <Bot size={14} />
+              <span>Call Using AI Agent</span>
             </button>
 
             <button

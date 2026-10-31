@@ -68,7 +68,8 @@ export interface RecentCall {
   greetingPassed?: boolean;
   notes?: string;
   transcript?: { speaker: string; text: string; time: string }[];
-  provider?: 'exotel' | 'demo' | 'native';
+  provider?: 'exotel' | 'exotel_ai' | 'demo' | 'native';
+  callMode?: 'employee_pstn' | 'ai_voicebot' | 'webrtc_peer' | 'native_dialer';
   isDemoRecord?: boolean;
   callSid?: string;
   recordingUrl?: string;
@@ -145,13 +146,18 @@ export interface PinnedDecision {
 }
 
 export type CallLifecycle = 'IDLE' | 'DIALING' | 'RINGING' | 'CONNECTED' | 'ENDED';
-export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE' | 'EXOTEL_REAL';
+export type CallEngineMode = 'AI_VOICE' | 'WEBRTC_PEER' | 'PHONE' | 'EXOTEL_REAL' | 'EXOTEL_AI';
 
 export type ExotelCallStatus =
   | 'initiating'
   | 'calling_employee'
   | 'employee_answered'
   | 'calling_client'
+  | 'calling_customer'
+  | 'customer_answered'
+  | 'ai_connected'
+  | 'ai_speaking'
+  | 'ai_listening'
   | 'connected'
   | 'completed'
   | 'busy'
@@ -178,5 +184,8 @@ export interface ActiveCallState {
   recordingUrl?: string;
   providerError?: string;
   isConfigured?: boolean;
+  voiceSessionId?: string;
+  aiTranscript?: string | Array<{ speaker: 'ai' | 'customer'; text: string; time?: string }>;
 }
+
 

@@ -235,18 +235,21 @@ export const handler = async (event: any) => {
     payload = {};
   }
 
+  const isAiMode = payload.mode === 'EXOTEL_AI';
   const to = typeof payload.to === 'string' ? payload.to.trim() : '';
   const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Ashray K';
+  const leadId = typeof payload.leadId === 'string' ? payload.leadId.trim() : 'lead-1';
+  const product = typeof payload.product === 'string' ? payload.product.trim() : 'Ortho GRID';
 
   const accountSid = (process.env.EXOTEL_ACCOUNT_SID || '').trim();
   const apiKey = (process.env.EXOTEL_API_KEY || '').trim();
   const apiToken = (process.env.EXOTEL_API_TOKEN || '').trim();
-  const subdomain = (process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com').trim();
+  const subdomain = (process.env.EXOTEL_SUBDOMAIN || (isAiMode ? 'api.in.exotel.com' : 'api.exotel.com')).trim();
   const callerId = (process.env.EXOTEL_CALLER_ID || '').trim();
   const agentPhone = (process.env.EXOTEL_AGENT_PHONE || '').trim();
 
-  // 1. Employee Phone Check
-  if (!agentPhone) {
+  // 1. Employee Phone Check (Required only for EXOTEL_REAL mode)
+  if (!isAiMode && !agentPhone) {
     return {
       statusCode: 400,
       headers,
@@ -293,7 +296,7 @@ export const handler = async (event: any) => {
     };
   }
 
-  if (agentDigits.length !== 10 || !/^[6-9]\d{9}$/.test(agentDigits)) {
+  if (!isAiMode && (agentDigits.length !== 10 || !/^[6-9]\d{9}$/.test(agentDigits))) {
     return {
       statusCode: 400,
       headers,
@@ -305,8 +308,8 @@ export const handler = async (event: any) => {
     };
   }
 
-  // 3. Self-Call Prevention Guard
-  if (clientDigits === agentDigits) {
+  // 3. Self-Call Prevention Guard (Required only for EXOTEL_REAL mode)
+  if (!isAiMode && clientDigits === agentDigits) {
     return {
       statusCode: 400,
       headers,
@@ -319,7 +322,11 @@ export const handler = async (event: any) => {
   }
 
   // 4. Exotel API Credentials Check
-  if (!accountSid || !apiKey || !apiToken || !callerId) {
+  const requiredVariables = isAiMode
+    ? ['EXOTEL_ACCOUNT_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN', 'EXOTEL_CALLER_ID']
+    : ['EXOTEL_ACCOUNT_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN', 'EXOTEL_CALLER_ID', 'EXOTEL_AGENT_PHONE'];
+
+  if (!accountSid || !apiKey || !apiToken || !callerId || (!isAiMode && !agentPhone)) {
     return {
       statusCode: 503,
       headers,
@@ -328,20 +335,13 @@ export const handler = async (event: any) => {
         configured: false,
         error: 'CREDENTIALS_MISSING',
         message: 'Exotel API credentials are not yet configured in Netlify environment variables. Please add EXOTEL_ACCOUNT_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN, and EXOTEL_CALLER_ID to your Netlify site settings.',
-        requiredVariables: [
-          'EXOTEL_ACCOUNT_SID',
-          'EXOTEL_API_KEY',
-          'EXOTEL_API_TOKEN',
-          'EXOTEL_CALLER_ID',
-          'EXOTEL_AGENT_PHONE'
-        ]
+        requiredVariables
       })
     };
   }
 
-  // 5. Connect Two Numbers API Request (Official Exotel Connect Two Numbers)
+  // 5. Connect API Request
   try {
-    // Official Exotel v1 REST endpoint with .json format
     const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect.json`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
 
@@ -351,16 +351,44 @@ export const handler = async (event: any) => {
     }
 
     const formParams = new URLSearchParams();
-    formParams.append('From', `+91${agentDigits}`);
-    formParams.append('To', `+91${clientDigits}`);
-    formParams.append('CallerId', sanitizedCallerId);
-    formParams.append('CallType', 'trans');
-    formParams.append('TimeLimit', '14400');
-    formParams.append('TimeOut', '35');
-    formParams.append('Record', 'true');
-    formParams.append('CustomField', `client=${clientName};phone=${clientDigits};app=onground_callcentre`);
 
-    console.log(`[Exotel:Call] Dispatching Connect Two Numbers request to https://${subdomain}: From=+91*****${agentDigits.slice(-4)}, To=+91*****${clientDigits.slice(-4)}, CallerId=${maskPhoneNumbers(sanitizedCallerId)}`);
+    if (isAiMode) {
+      // MODE 2: Exotel Connect Voice AI API (Voicebot / AgentStream)
+      // Dials customer directly from CallerId. Employee phone is NOT dialed.
+      const sessionId = 'vses_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      const streamHost = (process.env.EXOTEL_STREAM_HOST || 'api.on-ground.ai').trim();
+      const streamUrl = process.env.EXOTEL_STREAM_URL
+        ? `${process.env.EXOTEL_STREAM_URL}?sessionId=${sessionId}`
+        : `wss://${streamHost}/exotel-voicebot?sessionId=${sessionId}`;
+      const statusCallbackUrl = process.env.EXOTEL_STATUS_CALLBACK_URL || `https://${streamHost}/api/exotel/callback`;
+
+      formParams.append('From', `+91${clientDigits}`);
+      formParams.append('CallerId', sanitizedCallerId);
+      formParams.append('StreamUrl', streamUrl);
+      formParams.append('StreamType', 'bidirectional');
+      formParams.append('CallType', 'trans');
+      formParams.append('TimeLimit', '1800');
+      formParams.append('TimeOut', '35');
+      formParams.append('Record', 'true');
+      formParams.append('StatusCallback', statusCallbackUrl);
+      formParams.append('StatusCallbackEvents[0]', 'answered');
+      formParams.append('StatusCallbackEvents[1]', 'terminal');
+      formParams.append('CustomField', `sessionId=${sessionId};leadId=${leadId};mode=voicebot;product=${product};app=onground_callcentre`);
+
+      console.log(`[Exotel:AI] Dispatching Connect Voice AI request to https://${subdomain}: To(From)=+91*****${clientDigits.slice(-4)}, CallerId=${maskPhoneNumbers(sanitizedCallerId)}, StreamUrl=${streamUrl}`);
+    } else {
+      // MODE 1: Standard Connect Two Numbers (Employee <-> Customer)
+      formParams.append('From', `+91${agentDigits}`);
+      formParams.append('To', `+91${clientDigits}`);
+      formParams.append('CallerId', sanitizedCallerId);
+      formParams.append('CallType', 'trans');
+      formParams.append('TimeLimit', '14400');
+      formParams.append('TimeOut', '35');
+      formParams.append('Record', 'true');
+      formParams.append('CustomField', `client=${clientName};phone=${clientDigits};app=onground_callcentre`);
+
+      console.log(`[Exotel:Call] Dispatching Connect Two Numbers request to https://${subdomain}: From=+91*****${agentDigits.slice(-4)}, To=+91*****${clientDigits.slice(-4)}, CallerId=${maskPhoneNumbers(sanitizedCallerId)}`);
+    }
 
     const response = await fetch(exotelUrl, {
       method: 'POST',
@@ -407,11 +435,12 @@ export const handler = async (event: any) => {
       body: JSON.stringify({
         success: true,
         callSid,
-        status: 'calling_employee',
+        mode: isAiMode ? 'EXOTEL_AI' : 'EXOTEL_REAL',
+        status: isAiMode ? 'calling_customer' : 'calling_employee',
         rawStatus: parsed.rawStatus || parsed?.Call?.Status || 'in-progress',
         clientName,
         clientPhone: `+91${clientDigits}`,
-        agentPhone: `+91${agentDigits}`,
+        agentPhone: isAiMode ? undefined : `+91${agentDigits}`,
         callerId: sanitizedCallerId,
         createdAt: parsed?.Call?.DateCreated || new Date().toISOString()
       })

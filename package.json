@@ -8,8 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/voice-assistant-ui.test.ts && tsx tests/mode3-gemini-live-sync.test.ts && tsx tests/click-to-call.test.ts && tsx tests/responsive-layout.test.ts && tsx tests/customer-voice-assistant-fix.test.ts && tsx tests/voice-assistant-chat-redesign.test.ts && tsx tests/intelligent-customer-callback.test.ts && tsx tests/full-app-audit-and-pulse.test.ts && tsx tests/fluid-responsive-audit.test.ts && tsx tests/netlify-deployment.test.ts && tsx tests/exotel-calling.test.ts && tsx tests/exotel-flow-regression.test.ts && tsx tests/exotel-diagnostics.test.ts",
-    "test:exotel": "tsx tests/exotel-calling.test.ts && tsx tests/exotel-flow-regression.test.ts && tsx tests/exotel-diagnostics.test.ts",
+    "server:voicebot": "tsx server/exotelVoiceServer.ts",
+    "test": "tsx tests/voice-assistant-ui.test.ts && tsx tests/mode3-gemini-live-sync.test.ts && tsx tests/click-to-call.test.ts && tsx tests/responsive-layout.test.ts && tsx tests/customer-voice-assistant-fix.test.ts && tsx tests/voice-assistant-chat-redesign.test.ts && tsx tests/intelligent-customer-callback.test.ts && tsx tests/full-app-audit-and-pulse.test.ts && tsx tests/fluid-responsive-audit.test.ts && tsx tests/netlify-deployment.test.ts && tsx tests/exotel-calling.test.ts && tsx tests/exotel-flow-regression.test.ts && tsx tests/exotel-diagnostics.test.ts && tsx tests/exotel-ai-calling.test.ts",
+    "test:exotel": "tsx tests/exotel-calling.test.ts && tsx tests/exotel-flow-regression.test.ts && tsx tests/exotel-diagnostics.test.ts && tsx tests/exotel-ai-calling.test.ts",
+    "test:exotel-ai": "tsx tests/exotel-ai-calling.test.ts",
     "test:exotel-flow": "tsx tests/exotel-flow-regression.test.ts",
     "test:diagnostics": "tsx tests/exotel-diagnostics.test.ts",
     "test:audit": "tsx tests/full-app-audit-and-pulse.test.ts",
@@ -26,11 +28,13 @@
     "@google/genai": "^2.30.0",
     "lucide-react": "^1.16.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.3.4",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",

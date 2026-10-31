@@ -13,7 +13,8 @@ import {
   FileText,
   Plus,
   Search,
-  Check
+  Check,
+  Bot
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { useCalling } from '../../context/CallingContext';
@@ -227,6 +228,7 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                               >
                                 {lead.phone}
                               </span>
+                              {/* MODE 1: Call Myself (Exotel Two-Legged PSTN) */}
                               <button
                                 style={{
                                   background: 'rgba(2, 132, 199, 0.12)',
@@ -243,19 +245,59 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log(`[PlannerView] Exotel Call button clicked for lead: ${lead.name}`);
+                                  console.log(`[PlannerView] Call Myself button clicked for lead: ${lead.name}`);
                                   startCall({
                                     name: lead.name,
                                     phone: lead.phone,
                                     mode: 'EXOTEL_REAL',
                                     value: lead.price,
-                                    product: lead.product
+                                    product: lead.product,
+                                    leadId: lead.id
                                   });
                                 }}
-                                title={`Initiate Real Exotel Telephone Call to ${lead.name}`}
+                                title={`Mode 1 (Call Myself): Exotel calls your phone first, then bridges ${lead.name}`}
                               >
                                 <Phone size={11} />
-                                <span>Call Client</span>
+                                <span>Call Myself</span>
+                              </button>
+
+                              {/* MODE 2: Call Using AI Agent (Exotel Connect Voice AI) */}
+                              <button
+                                style={{
+                                  background: 'rgba(124, 58, 237, 0.12)',
+                                  border: '1px solid rgba(124, 58, 237, 0.4)',
+                                  color: '#7c3aed',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  console.log(`[PlannerView] Call Using AI Agent button clicked for lead: ${lead.name}`);
+                                  startCall({
+                                    name: lead.name,
+                                    phone: lead.phone,
+                                    mode: 'EXOTEL_AI',
+                                    value: lead.price,
+                                    product: lead.product,
+                                    leadId: lead.id,
+                                    buyingSignals: [
+                                      lead.signals?.financing,
+                                      lead.signals?.quotation,
+                                      lead.signals?.warranty
+                                    ].filter(Boolean),
+                                    notes: lead.notes
+                                  });
+                                }}
+                                title={`Mode 2 (Call Using AI Agent): Exotel dials ${lead.name} directly and connects Gemini Live`}
+                              >
+                                <Bot size={11} />
+                                <span>Call Using AI Agent</span>
                               </button>
                               <ClickToCallButton phone={lead.phone} customerName={lead.name} size="sm" />
                             </div>
@@ -497,6 +539,12 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                               Exotel PSTN
                             </span>
                           )}
+                          {call.provider === 'exotel_ai' && (
+                            <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(124, 58, 237, 0.15)', border: '1px solid rgba(124, 58, 237, 0.4)', borderRadius: '9999px', color: '#7c3aed', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Bot size={10} />
+                              AI Voicebot
+                            </span>
+                          )}
                           {call.isDemoRecord && (
                             <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: '9999px', color: '#fbbf24', fontWeight: 700 }}>
                               Demo Record
@@ -697,27 +745,28 @@ export const PlannerView: React.FC<{ defaultSubTab?: 'calls' | 'incoming' | 'rec
                         mode: 'EXOTEL_REAL'
                       });
                     }}
-                    title={`Call ${selectedCallReview.name} via Exotel Telephony`}
+                    title={`Call Myself: Exotel Two-Legged call connecting employee to ${selectedCallReview.name}`}
                   >
                     <Phone size={14} />
-                    <span>Call via Exotel (PSTN)</span>
+                    <span>Call Myself</span>
                   </button>
                   <button
                     className={styles.callbackBtn}
-                    style={{ flex: 1, justifyContent: 'center' }}
+                    style={{ flex: 1, justifyContent: 'center', backgroundColor: '#7c3aed' }}
                     onClick={() => {
-                      const phoneToCall = selectedCallReview.phone || '+91 73386 26120';
+                      const phoneToCall = selectedCallReview.phone || '+917338626120';
+                      console.log(`[PlannerView] Review modal AI Call clicked for contact: ${selectedCallReview.name}`);
                       setSelectedCallReview(null);
                       startCall({
                         name: selectedCallReview.name,
                         phone: phoneToCall,
-                        mode: 'AI_VOICE'
+                        mode: 'EXOTEL_AI'
                       });
                     }}
-                    title={`Call ${selectedCallReview.name} with AI voice assistant`}
+                    title={`Call Using AI Agent: Exotel Connect Voice AI outbound call to ${selectedCallReview.name}`}
                   >
-                    <PhoneCall size={14} />
-                    <span>In-App AI Call</span>
+                    <Bot size={14} />
+                    <span>Call Using AI Agent</span>
                   </button>
                   <ClickToCallButton
                     phone={selectedCallReview.phone}

@@ -1,5 +1,10 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { parseExotelResponseBody, sanitizeExotelData, getExotelTroubleshootingHint } from '../netlify/functions/exotel-call';
+import {
+  createVoiceCallSession,
+  getVoiceCallSession,
+  VoiceCallSession
+} from './exotelVoiceServer';
 
 export interface ExotelConfig {
   accountSid?: string;
@@ -105,18 +110,21 @@ export async function handleExotelCallRequest(
   }
 
   const payload = await parseJsonBody(req);
+  const isAiMode = payload.mode === 'EXOTEL_AI';
   const to = typeof payload.to === 'string' ? payload.to.trim() : '';
   const clientName = typeof payload.clientName === 'string' ? payload.clientName.trim() : 'Ashray K';
+  const leadId = typeof payload.leadId === 'string' ? payload.leadId.trim() : 'lead-1';
+  const product = typeof payload.product === 'string' ? payload.product.trim() : 'Ortho GRID';
 
   const accountSid = env.EXOTEL_ACCOUNT_SID || process.env.EXOTEL_ACCOUNT_SID;
   const apiKey = env.EXOTEL_API_KEY || process.env.EXOTEL_API_KEY;
   const apiToken = env.EXOTEL_API_TOKEN || process.env.EXOTEL_API_TOKEN;
-  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || 'api.exotel.com';
+  const subdomain = env.EXOTEL_SUBDOMAIN || process.env.EXOTEL_SUBDOMAIN || (isAiMode ? 'api.in.exotel.com' : 'api.exotel.com');
   const callerId = env.EXOTEL_CALLER_ID || process.env.EXOTEL_CALLER_ID;
   const agentPhone = env.EXOTEL_AGENT_PHONE || process.env.EXOTEL_AGENT_PHONE;
 
-  // 1. Employee Phone Verification
-  if (!agentPhone || !agentPhone.trim()) {
+  // 1. Employee Phone Verification (ONLY required for EXOTEL_REAL)
+  if (!isAiMode && (!agentPhone || !agentPhone.trim())) {
     res.statusCode = 400;
     res.end(JSON.stringify({
       success: false,
@@ -138,7 +146,7 @@ export async function handleExotelCallRequest(
   }
 
   const clientNormalized = normalizePhone(to);
-  const agentNormalized = normalizePhone(agentPhone);
+  const agentNormalized = agentPhone ? normalizePhone(agentPhone) : { isValid: false, digits: '', e164: '', national: '' };
 
   if (!clientNormalized.isValid) {
     res.statusCode = 400;
@@ -150,7 +158,7 @@ export async function handleExotelCallRequest(
     return;
   }
 
-  if (!agentNormalized.isValid) {
+  if (!isAiMode && !agentNormalized.isValid) {
     res.statusCode = 400;
     res.end(JSON.stringify({
       success: false,
@@ -160,8 +168,8 @@ export async function handleExotelCallRequest(
     return;
   }
 
-  // 3. Self-Call Prevention Guard
-  if (clientNormalized.digits === agentNormalized.digits) {
+  // 3. Self-Call Prevention Guard (ONLY for EXOTEL_REAL)
+  if (!isAiMode && clientNormalized.digits === agentNormalized.digits) {
     res.statusCode = 400;
     res.end(JSON.stringify({
       success: false,
@@ -172,20 +180,19 @@ export async function handleExotelCallRequest(
   }
 
   // 4. Exotel API Credentials Check
-  if (!accountSid || !apiKey || !apiToken || !callerId) {
+  const hasAgentPhoneCheck = isAiMode ? true : Boolean(agentPhone);
+  if (!accountSid || !apiKey || !apiToken || !callerId || !hasAgentPhoneCheck) {
+    const requiredVariables = isAiMode
+      ? ['EXOTEL_ACCOUNT_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN', 'EXOTEL_CALLER_ID']
+      : ['EXOTEL_ACCOUNT_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN', 'EXOTEL_CALLER_ID', 'EXOTEL_AGENT_PHONE'];
+
     res.statusCode = 503;
     res.end(JSON.stringify({
       success: false,
       configured: false,
       error: 'CREDENTIALS_MISSING',
       message: 'Exotel API credentials are not yet configured in server environment variables. Please add EXOTEL_ACCOUNT_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN, and EXOTEL_CALLER_ID to your .env file or Netlify settings.',
-      requiredVariables: [
-        'EXOTEL_ACCOUNT_SID',
-        'EXOTEL_API_KEY',
-        'EXOTEL_API_TOKEN',
-        'EXOTEL_CALLER_ID',
-        'EXOTEL_AGENT_PHONE'
-      ],
+      requiredVariables,
       details: {
         hasAccountSid: Boolean(accountSid),
         hasApiKey: Boolean(apiKey),
@@ -197,7 +204,7 @@ export async function handleExotelCallRequest(
     return;
   }
 
-  // 5. Build Exotel Connect API Request (Official Exotel Connect Two Numbers)
+  // 5. Build Exotel Connect API Request
   try {
     const exotelUrl = `https://${subdomain}/v1/Accounts/${accountSid}/Calls/connect.json`;
     const authHeader = `Basic ${Buffer.from(`${apiKey}:${apiToken}`).toString('base64')}`;
@@ -208,16 +215,55 @@ export async function handleExotelCallRequest(
     }
 
     const formParams = new URLSearchParams();
-    formParams.append('From', agentNormalized.e164);
-    formParams.append('To', clientNormalized.e164);
-    formParams.append('CallerId', sanitizedCallerId);
-    formParams.append('CallType', 'trans');
-    formParams.append('TimeLimit', '14400'); // 4 hours max
-    formParams.append('TimeOut', '35'); // 35 sec ring timeout
-    formParams.append('Record', 'true');
-    formParams.append('CustomField', `client=${clientName};phone=${clientNormalized.digits};app=onground_callcentre`);
+    let voiceSession: VoiceCallSession | null = null;
 
-    console.log(`[ExotelService] Dispatching Connect API call to https://${subdomain}: From=+91*****${agentNormalized.digits.slice(-4)} To=+91*****${clientNormalized.digits.slice(-4)} CallerId=${sanitizedCallerId}`);
+    if (isAiMode) {
+      // MODE 2: Exotel Connect Voice AI API (Voicebot / AgentStream)
+      voiceSession = createVoiceCallSession({
+        leadId,
+        customerName: clientName,
+        customerPhone: clientNormalized.e164,
+        product,
+        category: typeof payload.category === 'string' ? payload.category : undefined,
+        price: typeof payload.price === 'number' ? payload.price : undefined,
+        signals: payload.signals as any,
+        notes: typeof payload.notes === 'string' ? payload.notes : undefined,
+        exotelCallerId: sanitizedCallerId
+      });
+
+      const streamHost = (env.EXOTEL_STREAM_HOST || process.env.EXOTEL_STREAM_HOST || req.headers.host || 'localhost:5173').trim();
+      const streamUrl = (env.EXOTEL_STREAM_URL || process.env.EXOTEL_STREAM_URL)
+        ? `${env.EXOTEL_STREAM_URL || process.env.EXOTEL_STREAM_URL}?sessionId=${voiceSession.sessionId}`
+        : `wss://${streamHost}/exotel-voicebot?sessionId=${voiceSession.sessionId}`;
+      const statusCallbackUrl = env.EXOTEL_STATUS_CALLBACK_URL || process.env.EXOTEL_STATUS_CALLBACK_URL || `https://${streamHost}/api/exotel/callback`;
+
+      formParams.append('From', clientNormalized.e164);
+      formParams.append('CallerId', sanitizedCallerId);
+      formParams.append('StreamUrl', streamUrl);
+      formParams.append('StreamType', 'bidirectional');
+      formParams.append('CallType', 'trans');
+      formParams.append('TimeLimit', '1800'); // 30 min max for voicebot
+      formParams.append('TimeOut', '35');
+      formParams.append('Record', 'true');
+      formParams.append('StatusCallback', statusCallbackUrl);
+      formParams.append('StatusCallbackEvents[0]', 'answered');
+      formParams.append('StatusCallbackEvents[1]', 'terminal');
+      formParams.append('CustomField', `sessionId=${voiceSession.sessionId};leadId=${leadId};mode=voicebot;product=${product};app=onground_callcentre`);
+
+      console.log(`[ExotelService:AI] Dispatching Connect Voice AI call to https://${subdomain}: To(From)=+91*****${clientNormalized.digits.slice(-4)} CallerId=${sanitizedCallerId} StreamUrl=${streamUrl}`);
+    } else {
+      // MODE 1: Standard Connect Two Numbers (Employee <-> Customer)
+      formParams.append('From', agentNormalized.e164);
+      formParams.append('To', clientNormalized.e164);
+      formParams.append('CallerId', sanitizedCallerId);
+      formParams.append('CallType', 'trans');
+      formParams.append('TimeLimit', '14400'); // 4 hours max
+      formParams.append('TimeOut', '35'); // 35 sec ring timeout
+      formParams.append('Record', 'true');
+      formParams.append('CustomField', `client=${clientName};phone=${clientNormalized.digits};app=onground_callcentre`);
+
+      console.log(`[ExotelService] Dispatching Connect API call to https://${subdomain}: From=+91*****${agentNormalized.digits.slice(-4)} To=+91*****${clientNormalized.digits.slice(-4)} CallerId=${sanitizedCallerId}`);
+    }
 
     const response = await fetch(exotelUrl, {
       method: 'POST',
@@ -256,17 +302,23 @@ export async function handleExotelCallRequest(
     const callSid = parsed.sid || parsed?.Call?.Sid || `exo_${Date.now()}`;
     const rawStatus = parsed.rawStatus || parsed?.Call?.Status || 'in-progress';
 
+    if (voiceSession) {
+      voiceSession.callSid = callSid;
+    }
+
     res.statusCode = 200;
     res.end(JSON.stringify({
       success: true,
       callSid,
-      status: 'calling_employee',
+      mode: isAiMode ? 'EXOTEL_AI' : 'EXOTEL_REAL',
+      status: isAiMode ? 'calling_customer' : 'calling_employee',
       rawStatus,
       clientName,
       clientPhone: clientNormalized.e164,
-      agentPhone: agentNormalized.e164,
+      agentPhone: isAiMode ? undefined : agentNormalized.e164,
       callerId,
-      createdAt: data?.Call?.DateCreated || new Date().toISOString()
+      sessionId: voiceSession ? voiceSession.sessionId : undefined,
+      createdAt: parsed?.Call?.DateCreated || new Date().toISOString()
     }));
   } catch (err: any) {
     console.error('[ExotelService] Network/Server exception:', err);
@@ -296,11 +348,32 @@ export async function handleExotelStatusRequest(
   }
 
   const urlObj = new URL(req.url || '/', 'http://localhost');
-  const callSid = urlObj.searchParams.get('callSid');
+  const callSid = urlObj.searchParams.get('callSid') || '';
+  const sessionId = urlObj.searchParams.get('sessionId') || '';
 
-  if (!callSid) {
+  if (!callSid && !sessionId) {
     res.statusCode = 400;
-    res.end(JSON.stringify({ success: false, error: 'CALL_SID_REQUIRED', message: 'Query parameter callSid is required.' }));
+    res.end(JSON.stringify({ success: false, error: 'CALL_SID_REQUIRED', message: 'Query parameter callSid or sessionId is required.' }));
+    return;
+  }
+
+  // Check VoiceCallSession registry for active AI Voicebot calls
+  const voiceSession = (callSid ? getVoiceCallSession(callSid) : null) || (sessionId ? getVoiceCallSession(sessionId) : null);
+  if (voiceSession) {
+    res.statusCode = 200;
+    res.end(JSON.stringify({
+      success: true,
+      callSid: voiceSession.callSid || callSid,
+      sessionId: voiceSession.sessionId,
+      mode: 'EXOTEL_AI',
+      status: voiceSession.status,
+      isAiSpeaking: voiceSession.isAiSpeaking,
+      duration: voiceSession.callDuration,
+      transcript: voiceSession.transcript,
+      transcriptSnippet: voiceSession.transcript.slice(-2).map(t => `${t.speaker === 'assistant' ? 'AI' : 'Customer'}: ${t.text}`).join(' | '),
+      geminiLiveConnected: voiceSession.geminiLiveConnected,
+      isConfigured: true
+    }));
     return;
   }
 

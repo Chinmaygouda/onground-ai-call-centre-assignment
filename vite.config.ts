@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { handleGeminiTokenRequest, handleGeminiStatusRequest, handleGeminiModelsRequest } from './server/geminiTokenService';
 import { handleGeminiQueryRequest } from './server/geminiQueryService';
 import { handleExotelCallRequest, handleExotelStatusRequest, handleExotelCallbackRequest } from './server/exotelService';
+import { attachExotelVoiceServer } from './server/exotelVoiceServer';
 
 function geminiLiveServerPlugin(): Plugin {
   return {
@@ -44,6 +45,10 @@ function geminiLiveServerPlugin(): Plugin {
         const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
         handleExotelCallbackRequest(req, res, env);
       });
+      // Attach Exotel Voicebot WebSocket Server
+      if (server.httpServer) {
+        attachExotelVoiceServer(server.httpServer, '/exotel-voicebot');
+      }
     },
     configurePreviewServer(server) {
       server.middlewares.use('/api/gemini/token', (req, res) => {
@@ -82,6 +87,10 @@ function geminiLiveServerPlugin(): Plugin {
         const env = loadEnv('production', process.cwd(), '');
         handleExotelCallbackRequest(req, res, env);
       });
+      // Attach Exotel Voicebot WebSocket Server (Preview)
+      if (server.httpServer) {
+        attachExotelVoiceServer(server.httpServer, '/exotel-voicebot');
+      }
     }
   };
 }

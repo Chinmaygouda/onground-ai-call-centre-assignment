@@ -47,6 +47,21 @@ export const CallingModal: React.FC = () => {
   };
 
   const getStatusLabel = () => {
+    if (callState.mode === 'EXOTEL_AI') {
+      const s = callState.exotelStatus;
+      if (s === 'initiating') return 'Initiating AI Outbound Call...';
+      if (s === 'calling_customer') return `Ringing ${callState.contactName || 'Customer'}...`;
+      if (s === 'customer_answered') return 'Customer Answered · Voicebot Connecting';
+      if (s === 'ai_speaking') return 'AI Voice Assistant Speaking';
+      if (s === 'ai_listening') return 'Listening to Customer...';
+      if (s === 'connected') return 'AI Voice Call Connected';
+      if (s === 'completed') return 'AI Call Completed';
+      if (s === 'busy') return 'Customer Line Busy';
+      if (s === 'no_answer') return 'Customer Did Not Answer';
+      if (s === 'failed') return 'AI Call Failed';
+      if (s === 'cancelled') return 'Call Cancelled';
+    }
+
     if (callState.mode === 'EXOTEL_REAL') {
       const s = callState.exotelStatus;
       if (s === 'initiating') return 'Initiating Call...';
@@ -117,6 +132,7 @@ export const CallingModal: React.FC = () => {
               </div>
 
               {/* Exotel Telephony Provider Pill */}
+              {/* Exotel Telephony Provider Pill */}
               {callState.mode === 'EXOTEL_REAL' && (
                 <div style={{
                   display: 'flex',
@@ -133,9 +149,35 @@ export const CallingModal: React.FC = () => {
                   margin: '0 auto 12px auto'
                 }}>
                   <ShieldCheck size={12} />
-                  <span>Exotel Telephony Network</span>
+                  <span>Exotel Telephony Network (Call Myself)</span>
                   {callState.exotelCallSid && (
                     <span style={{ fontFamily: 'monospace', color: '#e0e7ff' }}>
+                      · SID: {callState.exotelCallSid.substring(0, 14)}...
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Exotel Voice AI Provider Pill */}
+              {callState.mode === 'EXOTEL_AI' && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  color: '#d8b4fe',
+                  backgroundColor: 'rgba(88, 28, 135, 0.45)',
+                  border: '1px solid rgba(192, 132, 252, 0.35)',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  width: 'fit-content',
+                  margin: '0 auto 12px auto'
+                }}>
+                  <ShieldCheck size={12} color="#c084fc" />
+                  <span>Exotel Connect Voice AI · Gemini Live Stream</span>
+                  {callState.exotelCallSid && (
+                    <span style={{ fontFamily: 'monospace', color: '#f3e8ff' }}>
                       · SID: {callState.exotelCallSid.substring(0, 14)}...
                     </span>
                   )}
@@ -153,7 +195,7 @@ export const CallingModal: React.FC = () => {
                 {callState.expectedValue ? ` · ₹${callState.expectedValue.toLocaleString()}` : ''}
               </div>
 
-              {/* Exotel Two-Leg Progression Stepper */}
+              {/* Exotel Two-Leg Progression Stepper (Mode 1: Call Myself) */}
               {callState.mode === 'EXOTEL_REAL' && (
                 <div style={{
                   display: 'flex',
@@ -173,7 +215,40 @@ export const CallingModal: React.FC = () => {
                   </span>
                   <span>──▶</span>
                   <span style={{ color: callState.exotelStatus === 'connected' ? '#34d399' : '#94a3b8', fontWeight: 600 }}>
-                    3. Ashray K
+                    3. Customer Mobile
+                  </span>
+                </div>
+              )}
+
+              {/* Exotel Voicebot Progression Stepper (Mode 2: Call Using AI Agent) */}
+              {callState.mode === 'EXOTEL_AI' && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  marginTop: '8px'
+                }}>
+                  <span style={{ color: '#c084fc', fontWeight: 600 }}>
+                    1. ExoPhone ({callState.exotelCallerId || '08047355774'})
+                  </span>
+                  <span>──▶</span>
+                  <span style={{
+                    color: callState.exotelStatus === 'calling_customer' ? '#fbbf24' : '#34d399',
+                    fontWeight: 600
+                  }}>
+                    2. Customer Mobile ({callState.contactPhone || 'Customer'})
+                  </span>
+                  <span>──▶</span>
+                  <span style={{
+                    color: (callState.exotelStatus === 'ai_speaking' || callState.exotelStatus === 'ai_listening' || callState.exotelStatus === 'connected')
+                      ? '#a855f7'
+                      : '#64748b',
+                    fontWeight: 600
+                  }}>
+                    3. Gemini Live Voicebot
                   </span>
                 </div>
               )}
@@ -234,6 +309,8 @@ export const CallingModal: React.FC = () => {
                 <span className={styles.dialogueLabel}>
                   {callState.mode === 'EXOTEL_REAL'
                     ? 'PSTN Audio Stream & Status'
+                    : callState.mode === 'EXOTEL_AI'
+                    ? 'AI Voicebot & Gemini Live Stream'
                     : callState.mode === 'AI_VOICE'
                     ? 'AI Customer Dialogue'
                     : 'Audio Channel Stream'}
@@ -243,15 +320,35 @@ export const CallingModal: React.FC = () => {
                     {callState.aiResponseText}
                   </div>
                 )}
-                {aiSpeechTranscript && (
+                {callState.mode === 'EXOTEL_AI' && callState.aiTranscript && (
+                  <div style={{
+                    maxHeight: '120px',
+                    overflowY: 'auto',
+                    fontSize: '12px',
+                    color: '#e2e8f0',
+                    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                    padding: '8px',
+                    borderRadius: '6px',
+                    whiteSpace: 'pre-line',
+                    fontFamily: 'monospace',
+                    lineHeight: '1.4'
+                  }}>
+                    {typeof callState.aiTranscript === 'string'
+                      ? callState.aiTranscript
+                      : callState.aiTranscript.map((t) => `${t.speaker === 'ai' ? 'AI Voicebot' : 'Customer'}: ${t.text}`).join('\n')}
+                  </div>
+                )}
+                {aiSpeechTranscript && callState.mode !== 'EXOTEL_AI' && (
                   <div className={styles.transcriptLive}>
                     You: &ldquo;{aiSpeechTranscript}&rdquo;
                   </div>
                 )}
-                {!callState.aiResponseText && !aiSpeechTranscript && (
+                {!callState.aiResponseText && !aiSpeechTranscript && !callState.aiTranscript && (
                   <div style={{ color: '#64748b' }}>
                     {callState.mode === 'EXOTEL_REAL'
                       ? 'Live telephone call in progress over telecom network...'
+                      : callState.mode === 'EXOTEL_AI'
+                      ? 'AI Outbound call in progress. Customer phone ringing directly...'
                       : 'Speak into your microphone. Voice AI agent is actively listening...'}
                   </div>
                 )}
@@ -275,7 +372,12 @@ export const CallingModal: React.FC = () => {
                 {/* Transparent Billing Notice */}
                 {callState.mode === 'EXOTEL_REAL' && (
                   <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>
-                    Exotel Two-Legged Call · Billed to business Exotel account · Free for recipient Ashray K
+                    Exotel Two-Legged Call · Billed to business Exotel account · Free for recipient {callState.contactName || 'Customer'}
+                  </div>
+                )}
+                {callState.mode === 'EXOTEL_AI' && (
+                  <div style={{ fontSize: '10px', color: '#c084fc', marginTop: '6px' }}>
+                    Exotel Connect Voice AI · Direct Outbound to {callState.contactPhone || 'Customer'} · WSS Audio Stream to Gemini Live · Employee Phone Bypassed
                   </div>
                 )}
               </div>
