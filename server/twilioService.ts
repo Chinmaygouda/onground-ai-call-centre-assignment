@@ -750,10 +750,10 @@ export async function handleTwilioVoiceWebhook(
       if (!session) {
         console.warn(`[TwilioService:Voice] Session not found for sessionId=${sessionId}, callSid=${callSid}. Generating standard Sleep Company greeting.`);
         const fallbackSession = createTwilioVoiceSession({
-          leadId: 'unknown',
-          customerName: 'Customer',
+          leadId: 'lead-1',
+          customerName: 'Chinmay',
           customerPhone: params.get('To') || '+917204104491',
-          product: 'Ortho GRID Mattress'
+          product: 'Ortho GRID'
         });
         if (callSid) bindTwilioCallSid(fallbackSession.sessionId, callSid);
         updateTwilioSessionStatus(fallbackSession.sessionId, 'customer_answered');

@@ -25,8 +25,8 @@ export const mockAgent: AgentProfile = {
 export const mockLeads: Lead[] = [
   {
     id: 'lead-1',
-    name: 'Ashray K',
-    initials: 'AK',
+    name: 'Chinmay',
+    initials: 'CK',
     product: 'Ortho GRID',
     price: 8490,
     attractivenessScore: 90,
