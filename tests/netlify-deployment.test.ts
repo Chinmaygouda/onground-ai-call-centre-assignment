@@ -27,10 +27,13 @@ const tomlContent = fs.readFileSync(tomlPath, 'utf-8');
 assert(tomlContent.includes('command = "pnpm run build"'), 'netlify.toml configures build command: pnpm run build');
 assert(tomlContent.includes('publish = "dist"'), 'netlify.toml configures publish directory: dist');
 assert(tomlContent.includes('functions = "netlify/functions"'), 'netlify.toml configures functions directory: netlify/functions');
+assert(tomlContent.includes('SECRETS_SCAN_OMIT_KEYS'), 'netlify.toml configures SECRETS_SCAN_OMIT_KEYS for clean Netlify builds');
 assert(tomlContent.includes('from = "/api/gemini/token"'), 'netlify.toml routes /api/gemini/token to function');
 assert(tomlContent.includes('from = "/api/gemini/status"'), 'netlify.toml routes /api/gemini/status to function');
 assert(tomlContent.includes('from = "/api/gemini/models"'), 'netlify.toml routes /api/gemini/models to function');
 assert(tomlContent.includes('from = "/api/gemini/query"'), 'netlify.toml routes /api/gemini/query to function');
+assert(tomlContent.includes('from = "/api/twilio/call"'), 'netlify.toml routes /api/twilio/call to function');
+assert(tomlContent.includes('from = "/api/twilio/end-call"'), 'netlify.toml routes /api/twilio/end-call to function');
 assert(tomlContent.includes('from = "/*"') && tomlContent.includes('to = "/index.html"'), 'netlify.toml routes SPA fallback to /index.html');
 
 // 2. public/_redirects Fallback
@@ -40,7 +43,8 @@ assert(fs.existsSync(redirectsPath), 'public/_redirects exists in public directo
 const redirectsContent = fs.readFileSync(redirectsPath, 'utf-8');
 assert(redirectsContent.includes('/api/gemini/token'), 'public/_redirects proxies /api/gemini/token');
 assert(redirectsContent.includes('/api/gemini/query'), 'public/_redirects proxies /api/gemini/query');
-assert(redirectsContent.includes('/*                 /index.html                       200'), 'public/_redirects routes SPA fallback to /index.html');
+assert(redirectsContent.includes('/api/twilio/end-call'), 'public/_redirects proxies /api/twilio/end-call');
+assert(redirectsContent.includes('/*                      /index.html                            200'), 'public/_redirects routes SPA fallback to /index.html');
 
 // 3. Serverless Functions in netlify/functions
 console.log('\n[3/4] Netlify Serverless Functions Verification');
