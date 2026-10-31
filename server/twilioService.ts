@@ -64,6 +64,8 @@ export interface TwilioVoiceSession {
   providerError?: string;
   lastCustomerSpeech?: string;
   lastAiResponse?: string;
+  isTrialSample?: boolean;
+  trialSampleUrl?: string;
 }
 
 export interface StructuredAiTurnResponse {
@@ -558,10 +560,13 @@ export async function initiateTwilioOutboundCall(
     value?: number;
     buyingSignals?: string[];
     notes?: string;
+    isTrialSample?: boolean;
+    sampleTwiMLUrl?: string;
   },
   env: Record<string, string | undefined>
 ): Promise<{
   success: boolean;
+  stage?: string;
   callSid?: string;
   sessionId?: string;
   status: string;
@@ -569,6 +574,11 @@ export async function initiateTwilioOutboundCall(
   from: string;
   isTrial: boolean;
   liveCallEnabled: boolean;
+  isSimulation?: boolean;
+  isTrialSample?: boolean;
+  trialSampleUrl?: string;
+  trialLimitation?: boolean;
+  rejectedParameters?: string[];
   troubleshooting?: string;
   message?: string;
   error?: string;
@@ -624,6 +634,9 @@ export async function initiateTwilioOutboundCall(
 
   // Create session
   const maxTurns = parseInt(env.TWILIO_MAX_CONVERSATION_TURNS || '6', 10);
+  const isTrialSample = Boolean(payload.isTrialSample || env.TWILIO_USE_SAMPLE_URL === 'true');
+  const sampleTwiMLUrl = payload.sampleTwiMLUrl || 'http://demo.twilio.com/docs/voice.xml';
+
   const session = createTwilioVoiceSession({
     leadId: payload.leadId || 'lead-1',
     customerName: payload.clientName || 'Valued Customer',
@@ -634,14 +647,17 @@ export async function initiateTwilioOutboundCall(
     notes: payload.notes,
     maxTurns
   });
+  session.isTrialSample = isTrialSample;
+  session.trialSampleUrl = isTrialSample ? sampleTwiMLUrl : undefined;
 
   const webhookBaseUrl = (env.TWILIO_WEBHOOK_BASE_URL || 'https://YOUR-NGROK-DOMAIN.ngrok-free.app').replace(/\/+$/, '');
   const voiceWebhookUrl = `${webhookBaseUrl}${env.TWILIO_VOICE_WEBHOOK_PATH || '/api/twilio/voice'}?sessionId=${encodeURIComponent(session.sessionId)}`;
   const statusCallbackUrl = `${webhookBaseUrl}${env.TWILIO_STATUS_WEBHOOK_PATH || '/api/twilio/status'}?sessionId=${encodeURIComponent(session.sessionId)}`;
+  const effectiveVoiceUrl = isTrialSample ? sampleTwiMLUrl : voiceWebhookUrl;
 
   const liveCallEnabled = env.TWILIO_ENABLE_LIVE_CALLS === 'true';
 
-  console.log(`[TwilioService] Initiating AI Outbound call: To=${maskPhoneNumber(normalizedTo)}, From=${maskPhoneNumber(env.TWILIO_FROM_NUMBER!)}, SessionId=${session.sessionId}, Live=${liveCallEnabled}`);
+  console.log(`[TwilioService] Initiating Outbound call: To=${maskPhoneNumber(normalizedTo)}, From=${maskPhoneNumber(env.TWILIO_FROM_NUMBER!)}, SessionId=${session.sessionId}, Live=${liveCallEnabled}, SampleMode=${isTrialSample}`);
 
   if (!liveCallEnabled) {
     // Simulated outbound call progression (Safety Mode)
@@ -669,7 +685,11 @@ export async function initiateTwilioOutboundCall(
       isTrial: creds.isTrial,
       liveCallEnabled: false,
       isSimulation: true,
-      message: 'Twilio call initiated in Safety Simulation mode (TWILIO_ENABLE_LIVE_CALLS=false). Customer phone is safe.'
+      isTrialSample,
+      trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
+      message: isTrialSample
+        ? 'Twilio call initiated in Trial Sample Simulation mode (http://demo.twilio.com/docs/voice.xml). Customer phone is safe. NOTE: This is a static carrier test and NOT an AI conversation.'
+        : 'Twilio call initiated in Safety Simulation mode (TWILIO_ENABLE_LIVE_CALLS=false). Customer phone is safe.'
     };
   }
 
@@ -684,7 +704,7 @@ export async function initiateTwilioOutboundCall(
     const callOptions: any = {
       from: env.TWILIO_FROM_NUMBER!,
       to: normalizedTo,
-      url: voiceWebhookUrl,
+      url: effectiveVoiceUrl,
       statusCallback: statusCallbackUrl,
       statusCallbackMethod: 'POST'
     };
@@ -710,7 +730,11 @@ export async function initiateTwilioOutboundCall(
       isTrial: creds.isTrial,
       liveCallEnabled: true,
       isSimulation: false,
-      message: `Twilio outbound call successfully created: ${call.sid}. Dispatching to customer mobile.`
+      isTrialSample,
+      trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
+      message: isTrialSample
+        ? `Twilio official carrier test call created: ${call.sid}. Dispatching static demo audio (${sampleTwiMLUrl}) to customer mobile. NOTE: This is a static carrier test and NOT an AI conversation.`
+        : `Twilio outbound call successfully created: ${call.sid}. Dispatching to customer mobile.`
     };
   } catch (err: any) {
     console.error('[TwilioService] Outbound call API error:', err?.message || err);
@@ -774,25 +798,24 @@ export async function handleTwilioVoiceWebhook(
     try {
       const params = new URLSearchParams(bodyStr);
       const callSid = params.get('CallSid') || '';
+      const direction = params.get('Direction') || 'outbound-api';
+      const fromNumber = params.get('From') || '';
+      const toNumber = params.get('To') || '';
 
-      const session = getTwilioSession(sessionId) || (callSid ? getTwilioSession(callSid) : undefined);
+      let session = getTwilioSession(sessionId) || (callSid ? getTwilioSession(callSid) : undefined);
 
       if (!session) {
-        console.warn(`[TwilioService:Voice] Session not found for sessionId=${sessionId}, callSid=${callSid}. Generating standard Sleep Company greeting.`);
-        const fallbackSession = createTwilioVoiceSession({
-          leadId: 'lead-1',
-          customerName: 'Chinmay',
-          customerPhone: params.get('To') || '+917204104491',
+        const callerPhone = fromNumber || toNumber || '+917204104491';
+        const callerName = callerPhone.includes('7204104491') ? 'Chinmay' : 'Valued Customer';
+        console.log(`[TwilioService:Voice] ${direction === 'inbound' ? 'Inbound customer call' : 'Session not found for'} CallSid=${callSid}, From=${maskPhoneNumber(callerPhone)}. Initializing interactive Gemini Voice AI session.`);
+
+        session = createTwilioVoiceSession({
+          leadId: direction === 'inbound' ? 'inbound-call' : 'lead-1',
+          customerName: callerName,
+          customerPhone: callerPhone,
           product: 'Ortho GRID'
         });
-        if (callSid) bindTwilioCallSid(fallbackSession.sessionId, callSid);
-        updateTwilioSessionStatus(fallbackSession.sessionId, 'customer_answered');
-
-        const webhookBaseUrl = (env.TWILIO_WEBHOOK_BASE_URL || `https://${req.headers.host}`).replace(/\/+$/, '');
-        const twiml = generateInitialTwiML(fallbackSession, webhookBaseUrl);
-        res.statusCode = 200;
-        res.end(twiml);
-        return;
+        if (callSid) bindTwilioCallSid(session.sessionId, callSid);
       }
 
       if (callSid && !session.callSid) {
@@ -820,6 +843,25 @@ export async function handleTwilioVoiceWebhook(
       res.end(response.toString());
     }
   });
+}
+
+/**
+ * Serves an explicit static TwiML audio sample for trial carrier testing (Non-AI)
+ */
+export function handleTwilioSampleTwiml(
+  _req: IncomingMessage,
+  res: ServerResponse
+) {
+  res.setHeader('Content-Type', 'text/xml');
+  const response = new VoiceResponse();
+  response.say(
+    { voice: 'Polly.Aditi', language: 'en-IN' },
+    'This is an official Twilio carrier connectivity test from The Sleep Company. Your telephone line is functioning properly. This is a non-AI sample verification call.'
+  );
+  response.play('http://demo.twilio.com/docs/classic.mp3');
+  response.hangup();
+  res.statusCode = 200;
+  res.end(response.toString());
 }
 
 /**

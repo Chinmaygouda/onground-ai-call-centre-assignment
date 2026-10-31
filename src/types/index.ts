@@ -218,6 +218,8 @@ export interface ActiveCallState {
   };
   isSimulation?: boolean;
   simulationSid?: string;
+  isTrialSample?: boolean;
+  trialSampleUrl?: string;
   recordingUrl?: string;
   providerError?: string;
   isConfigured?: boolean;

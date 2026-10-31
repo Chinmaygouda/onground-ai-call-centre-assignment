@@ -9,7 +9,8 @@ import {
   handleTwilioCallStatusQuery,
   handleTwilioVoiceWebhook,
   handleTwilioAiTurnWebhook,
-  handleTwilioStatusCallbackWebhook
+  handleTwilioStatusCallbackWebhook,
+  handleTwilioSampleTwiml
 } from './server/twilioService';
 
 function geminiLiveServerPlugin(): Plugin {
@@ -73,6 +74,9 @@ function geminiLiveServerPlugin(): Plugin {
         const env = loadEnv(server.config.mode || 'development', process.cwd(), '');
         handleTwilioStatusCallbackWebhook(req, res, env);
       });
+      server.middlewares.use('/api/twilio/sample-twiml', (req, res) => {
+        handleTwilioSampleTwiml(req, res);
+      });
       // Attach Exotel Voicebot WebSocket Server
       if (server.httpServer) {
         attachExotelVoiceServer(server.httpServer, '/exotel-voicebot');
@@ -135,6 +139,9 @@ function geminiLiveServerPlugin(): Plugin {
       server.middlewares.use('/api/twilio/status', (req, res) => {
         const env = loadEnv('production', process.cwd(), '');
         handleTwilioStatusCallbackWebhook(req, res, env);
+      });
+      server.middlewares.use('/api/twilio/sample-twiml', (req, res) => {
+        handleTwilioSampleTwiml(req, res);
       });
       // Attach Exotel Voicebot WebSocket Server (Preview)
       if (server.httpServer) {

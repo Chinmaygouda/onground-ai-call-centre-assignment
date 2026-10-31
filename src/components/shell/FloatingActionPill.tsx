@@ -97,6 +97,26 @@ export const FloatingActionPill: React.FC = () => {
         <span>Call Using AI Agent</span>
       </button>
 
+      <button
+        className={styles.pillButton}
+        onClick={() => {
+          console.log('[FloatingActionPill] Carrier Sample Test clicked for contact: Chinmay');
+          startCall({
+            name: 'Chinmay',
+            phone: '+917204104491',
+            mode: 'TWILIO_AI',
+            isTrialSample: true,
+            value: 8490,
+            product: 'Ortho GRID (Carrier Sample)'
+          });
+        }}
+        title="Mode 3 (Twilio Trial Carrier Test): Plays official sample audio (demo.twilio.com) to verify phone ringing. Non-AI telephony verification."
+        style={{ color: '#fde047', borderColor: 'rgba(234, 179, 8, 0.4)' }}
+      >
+        <Phone size={13} color="#facc15" />
+        <span>Carrier Sample (Non-AI)</span>
+      </button>
+
       <a
         href="tel:+917338626120"
         className={styles.pillButton}

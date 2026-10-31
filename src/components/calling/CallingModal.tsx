@@ -201,7 +201,7 @@ export const CallingModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Twilio Voice AI Provider Pill */}
+              {/* Twilio Voice AI / Carrier Sample Provider Pill */}
               {callState.mode === 'TWILIO_AI' && (
                 <div style={{
                   display: 'flex',
@@ -209,19 +209,28 @@ export const CallingModal: React.FC = () => {
                   justifyContent: 'center',
                   gap: '6px',
                   fontSize: '11px',
-                  color: '#38bdf8',
-                  backgroundColor: 'rgba(14, 165, 233, 0.15)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: callState.isTrialSample ? '#fde047' : '#38bdf8',
+                  backgroundColor: callState.isTrialSample ? 'rgba(234, 179, 8, 0.15)' : 'rgba(14, 165, 233, 0.15)',
+                  border: callState.isTrialSample ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(56, 189, 248, 0.35)',
                   borderRadius: '9999px',
                   padding: '3px 10px',
                   width: 'fit-content',
                   margin: '0 auto 12px auto'
                 }}>
-                  <ShieldCheck size={12} color="#38bdf8" />
-                  <span>Twilio Programmable Voice · Gemini Text AI (&lt;Gather&gt; / &lt;Say&gt;)</span>
+                  <ShieldCheck size={12} color={callState.isTrialSample ? '#facc15' : '#38bdf8'} />
+                  <span>
+                    {callState.isTrialSample
+                      ? 'Twilio Official Carrier Test · Static Audio Sample (Non-AI)'
+                      : 'Twilio Programmable Voice · Gemini Text AI (<Gather> / <Say>)'}
+                  </span>
                   {callState.twilioCallSid && (
-                    <span style={{ fontFamily: 'monospace', color: '#bae6fd' }}>
-                      · SID: {callState.twilioCallSid.substring(0, 14)}...
+                    <span style={{ fontFamily: 'monospace', color: callState.isTrialSample ? '#fef08a' : '#bae6fd' }}>
+                      · Live SID: {callState.twilioCallSid.substring(0, 14)}...
+                    </span>
+                  )}
+                  {callState.isSimulation && callState.simulationSid && (
+                    <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}>
+                      · Sim ID: {callState.simulationSid.substring(0, 14)}...
                     </span>
                   )}
                 </div>
@@ -492,16 +501,31 @@ export const CallingModal: React.FC = () => {
                           ) : (
                             <Clock size={13} color="#64748b" />
                           )}
-                          <span>4. Answered</span>
+                          <span>{callState.isTrialSample ? '4. Sample Audio' : '4. Answered'}</span>
                         </div>
                         <span style={{ fontSize: '9px', color: stage4Passed ? '#a7f3d0' : '#94a3b8' }}>
-                          {isRejected ? 'Not reached' : stage4Passed ? 'Voice AI Live' : 'Waiting...'}
+                          {isRejected ? 'Not reached' : stage4Passed ? (callState.isTrialSample ? 'Playing Twilio Sample' : 'Voice AI Live') : 'Waiting...'}
                         </span>
                       </div>
                     </div>
                   </div>
                 );
               })()}
+
+              {callState.mode === 'TWILIO_AI' && callState.isTrialSample && (
+                <div style={{
+                  margin: '8px 18px',
+                  padding: '8px 12px',
+                  background: 'rgba(234, 179, 8, 0.12)',
+                  border: '1px solid rgba(234, 179, 8, 0.35)',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  color: '#fef08a',
+                  lineHeight: 1.4
+                }}>
+                  <strong>ℹ️ Twilio Official Carrier Sample Mode:</strong> This call dispatches official static demo audio (<code>demo.twilio.com</code>) to test international carrier routing and telephone line ringing. <em>This is a non-AI carrier test; no Gemini conversational processing occurs in this mode.</em>
+                </div>
+              )}
 
               {callState.lifecycle === 'CONNECTED' && (
                 <div className={styles.durationClock}>
@@ -577,6 +601,35 @@ export const CallingModal: React.FC = () => {
                           name: callState.contactName,
                           phone: callState.contactPhone,
                           mode: 'TWILIO_AI',
+                          isTrialSample: true,
+                          product: callState.productInterest,
+                          value: callState.expectedValue
+                        });
+                      }, 100);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#ca8a04',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontSize: '11px'
+                    }}
+                    title="Initiate official Twilio carrier demo audio sample (demo.twilio.com) to test telephone line ringing (Non-AI)"
+                  >
+                    Test Carrier Sample (Non-AI)
+                  </button>
+                  <button
+                    onClick={() => {
+                      endCall();
+                      setTimeout(() => {
+                        startCall({
+                          name: callState.contactName,
+                          phone: callState.contactPhone,
+                          mode: 'TWILIO_AI',
+                          isTrialSample: false,
                           product: callState.productInterest,
                           value: callState.expectedValue
                         });

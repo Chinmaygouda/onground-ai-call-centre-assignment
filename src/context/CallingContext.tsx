@@ -24,6 +24,8 @@ interface CallingContextType {
     leadId?: string;
     buyingSignals?: string[];
     notes?: string;
+    isTrialSample?: boolean;
+    sampleTwiMLUrl?: string;
   }) => Promise<void>;
   endCall: () => void;
   toggleMute: () => void;
@@ -479,7 +481,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     product,
     leadId,
     buyingSignals,
-    notes
+    notes,
+    isTrialSample,
+    sampleTwiMLUrl
   }: {
     name: string;
     phone: string;
@@ -489,6 +493,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     leadId?: string;
     buyingSignals?: string[];
     notes?: string;
+    isTrialSample?: boolean;
+    sampleTwiMLUrl?: string;
   }) => {
     // 1. Prevent duplicate calls if a call is already active
     if (callStateRef.current.lifecycle !== 'IDLE' && callStateRef.current.lifecycle !== 'ENDED') {
@@ -513,7 +519,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .toUpperCase()
       .substring(0, 2);
 
-    console.log(`[Calling] Tab ${tabSessionId.current} startCall initiated for '${name}', mode: '${mode}'`);
+    console.log(`[Calling] Tab ${tabSessionId.current} startCall initiated for '${name}', mode: '${mode}', isTrialSample: ${Boolean(isTrialSample)}`);
 
     if (mode === 'PHONE') {
       callStateRef.current = { ...callStateRef.current, lifecycle: 'IDLE' };
@@ -533,6 +539,8 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       productInterest: product,
       durationSeconds: 0,
       isMuted: false,
+      isTrialSample: Boolean(isTrialSample),
+      trialSampleUrl: sampleTwiMLUrl || (isTrialSample ? 'http://demo.twilio.com/docs/voice.xml' : undefined),
       exotelStatus: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? 'initiating' : undefined,
       twilioStatus: mode === 'TWILIO_AI' ? 'initiating' : undefined,
       twilioStage: mode === 'TWILIO_AI' ? 'request_accepted' : undefined,
@@ -545,7 +553,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : mode === 'EXOTEL_AI'
           ? 'Initiating AI Outbound Voice Call via Exotel Connect Voice AI...'
           : mode === 'TWILIO_AI'
-          ? 'Stage 1: Backend request accepted. Connecting to Twilio Programmable Voice...'
+          ? (isTrialSample
+              ? 'Stage 1: Backend request accepted. Connecting Twilio carrier sample test (http://demo.twilio.com/docs/voice.xml)...'
+              : 'Stage 1: Backend request accepted. Connecting to Twilio Programmable Voice...')
           : 'Connecting secure audio stream...'
     });
 
@@ -768,7 +778,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             product: product || 'Ortho GRID Mattress',
             value,
             buyingSignals: buyingSignals || [],
-            notes: notes || ''
+            notes: notes || '',
+            isTrialSample: Boolean(isTrialSample),
+            sampleTwiMLUrl
           })
         });
 
@@ -784,13 +796,15 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               product: product || 'Ortho GRID Mattress',
               value,
               buyingSignals: buyingSignals || [],
-              notes: notes || ''
+              notes: notes || '',
+              isTrialSample: Boolean(isTrialSample),
+              sampleTwiMLUrl
             })
           });
         }
 
         const data = await response.json();
-        console.log(`[Calling:TwilioAI] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}`);
+        console.log(`[Calling:TwilioAI] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}, isTrialSample: ${Boolean(data?.isTrialSample)}`);
 
         if (!response.ok || !data.success) {
           const displayError = data.message || 'Twilio call creation failed';
@@ -819,6 +833,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const callSid = data.callSid;
         const sessionId = data.sessionId;
         const isSimulation = Boolean(data.isSimulation);
+        const returnedIsTrialSample = Boolean(data.isTrialSample || isTrialSample);
+        const trialSampleUrl = data.trialSampleUrl || sampleTwiMLUrl || (returnedIsTrialSample ? 'http://demo.twilio.com/docs/voice.xml' : undefined);
+
         if (!isSimulation && callSid) {
           twilioCallSidRef.current = callSid;
         }
@@ -829,12 +846,18 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           twilioCallSid: isSimulation ? undefined : callSid,
           simulationSid: isSimulation ? callSid : undefined,
           isSimulation,
+          isTrialSample: returnedIsTrialSample,
+          trialSampleUrl,
           voiceSessionId: sessionId,
           twilioStatus: 'queued',
           twilioStage: 'call_created',
           aiResponseText: isSimulation
-            ? `Stage 2: Twilio call created in Safety Simulation mode. Advancing to customer ring simulation.`
-            : `Stage 2: Twilio call created successfully (SID: ${callSid}). Waiting for telecom carrier ring status...`
+            ? (returnedIsTrialSample
+                ? `Stage 2: Official carrier sample call created in simulation mode (http://demo.twilio.com/docs/voice.xml). Non-AI test.`
+                : `Stage 2: Twilio call created in Safety Simulation mode. Advancing to customer ring simulation.`)
+            : (returnedIsTrialSample
+                ? `Stage 2: Official carrier sample call created (SID: ${callSid}). Playing demo.twilio.com sample audio. Non-AI test.`
+                : `Stage 2: Twilio call created successfully (SID: ${callSid}). Waiting for telecom carrier ring status...`)
         }));
 
         if (twilioPollIntervalRef.current) {
@@ -907,7 +930,9 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               }
 
               let responseSnippet = 'Stage 4: Customer answered. AI Assistant speaking...';
-              if (currentStatus === 'ai_speaking') {
+              if (callStateRef.current.isTrialSample) {
+                responseSnippet = 'Stage 4: Customer answered. Playing official Twilio carrier demo audio. (Note: Non-AI telephony verification).';
+              } else if (currentStatus === 'ai_speaking') {
                 responseSnippet = statusData.transcriptSnippet ? `AI: "${statusData.transcriptSnippet}"` : 'Stage 4: Customer answered. AI Assistant speaking...';
               } else if (currentStatus === 'listening') {
                 responseSnippet = 'Stage 4: Listening to customer speech via Twilio <Gather>...';

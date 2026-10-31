@@ -16,6 +16,7 @@ import {
   validateTwilioWebhookSignature,
   hasActiveCallForLeadOrPhone,
   cleanupExpiredSessions,
+  handleTwilioSampleTwiml,
   StructuredAiTurnResponse,
   TwilioVoiceSession
 } from '../server/twilioService';
@@ -421,6 +422,59 @@ async function runTwilioTestSuite() {
 
   const upgradedCreds = validateTwilioCredentials({ ...testEnv, TWILIO_TRIAL_MODE: 'false' });
   assert(upgradedCreds.isTrial === false, 'Upgraded production account mode detected for TWILIO_TRIAL_MODE=false');
+
+  // --------------------------------------------------------------------------
+  // TEST 21: Official Trial Carrier Sample Mode (Non-AI Telephony Verification)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 21] Official Trial Carrier Sample Mode (Non-AI Telephony Verification)');
+  const sampleCallNumber = '+917204104491';
+  const sampleCallResult = await initiateTwilioOutboundCall(
+    { to: sampleCallNumber, clientName: 'Chinmay', isTrialSample: true },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+
+  assert(sampleCallResult.success === true, 'Trial carrier sample call successfully initiated');
+  assert(sampleCallResult.isTrialSample === true, 'Explicitly marked as isTrialSample=true');
+  assert(sampleCallResult.trialSampleUrl === 'http://demo.twilio.com/docs/voice.xml', 'Uses official Twilio demo audio sample URL');
+  assert(sampleCallResult.message?.includes('NOT an AI conversation'), 'Message explicitly disclaims that this is NOT an AI conversation');
+
+  // Verify sample TwiML handler
+  let sampleOutput = '';
+  const mockRes: any = {
+    setHeader: () => {},
+    statusCode: 200,
+    end: (str: string) => { sampleOutput = str; }
+  };
+  handleTwilioSampleTwiml({} as any, mockRes);
+  assert(sampleOutput.includes('Polly.Aditi'), 'Sample TwiML specifies Polly.Aditi Indian voice');
+  assert(sampleOutput.includes('classic.mp3'), 'Sample TwiML includes audio sample playback');
+  assert(sampleOutput.includes('non-AI sample verification'), 'Sample TwiML explicitly mentions non-AI verification');
+
+  // Conclude sample call to release lock
+  updateTwilioSessionStatus(sampleCallResult.sessionId!, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 22: Inbound Twilio Voice Call Recognition & Session Initialization
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 22] Inbound Twilio Voice Webhook Call Recognition');
+  const inboundCallerPhone = '+917204104491';
+  const inboundSession = createTwilioVoiceSession({
+    leadId: 'inbound-call',
+    customerName: 'Chinmay',
+    customerPhone: inboundCallerPhone,
+    product: 'Ortho GRID'
+  });
+  bindTwilioCallSid(inboundSession.sessionId, 'CAinbound_test_123');
+  updateTwilioSessionStatus(inboundSession.sessionId, 'customer_answered');
+
+  assert(inboundSession.customerPhone === inboundCallerPhone, 'Inbound caller phone accurately tracked');
+  assert(inboundSession.customerName === 'Chinmay', 'Inbound verified caller recognized by name');
+
+  const inboundTwiml = generateInitialTwiML(inboundSession, 'https://test-subdomain.ngrok-free.app');
+  assert(inboundTwiml.includes('<Gather'), 'Inbound TwiML presents <Gather> for speech recognition');
+  assert(inboundTwiml.includes('Sleep Company'), 'Inbound TwiML speaks personalized Sleep Company greeting');
+
+  updateTwilioSessionStatus(inboundSession.sessionId, 'completed');
 
   // --------------------------------------------------------------------------
   // SUMMARY
