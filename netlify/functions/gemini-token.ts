@@ -1,29 +1,29 @@
 import { GoogleGenAI } from '@google/genai';
 
-export const handler = async (event: any) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
+const jsonHeaders = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
+export default async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       },
-      body: '',
-    };
+    });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your_gemini_api_key_here' || apiKey.trim() === '') {
-    return {
-      statusCode: 503,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({
+    return new Response(
+      JSON.stringify({
         success: false,
         error: 'MISSING_GEMINI_API_KEY',
         message: 'GEMINI_API_KEY is not configured on the server. Please set GEMINI_API_KEY in Netlify Site Settings.',
       }),
-    };
+      { status: 503, headers: jsonHeaders }
+    );
   }
 
   try {
@@ -40,28 +40,27 @@ export const handler = async (event: any) => {
       },
     });
 
-    const requestedModel = event.queryStringParameters?.model || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
+    const requestedModel =
+      new URL(req.url).searchParams.get('model') || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
 
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({
+    return new Response(
+      JSON.stringify({
         success: true,
         token: tokenResponse.name,
         expireTime,
         newSessionExpireTime,
         model: requestedModel,
       }),
-    };
+      { status: 200, headers: jsonHeaders }
+    );
   } catch (err: any) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({
+    return new Response(
+      JSON.stringify({
         success: false,
         error: 'TOKEN_CREATION_FAILED',
         message: err?.message || 'Failed to generate ephemeral token from Google AI Studio.',
       }),
-    };
+      { status: 400, headers: jsonHeaders }
+    );
   }
 };

@@ -27,11 +27,11 @@ console.log('================================================================');
 // 1. Phone Masking & Credential Redaction Unit Tests
 console.log('\n[1/6] Phone Masking & Credential Redaction');
 
-const maskedMobile = maskPhoneNumbers('Call client at +917338626120 immediately');
-assert(maskedMobile === 'Call client at +91*****6120 immediately', `Mobile is masked: "${maskedMobile}"`);
+const maskedMobile = maskPhoneNumbers('Call client at +919000000001 immediately');
+assert(maskedMobile === 'Call client at +91*****0001 immediately', `Mobile is masked: "${maskedMobile}"`);
 
-const maskedLandline = maskPhoneNumbers('Using CallerId 08047285774');
-assert(maskedLandline === 'Using CallerId 0*****5774', `Landline is masked: "${maskedLandline}"`);
+const maskedLandline = maskPhoneNumbers('Using CallerId 04400000000');
+assert(maskedLandline === 'Using CallerId 0*****0000', `Landline is masked: "${maskedLandline}"`);
 
 const redactedBasic = redactSensitiveCredentials('Authorization: Basic MmMxOG...==');
 assert(redactedBasic === 'Authorization: [REDACTED]', `Authorization header is redacted (got: "${redactedBasic}")`);
@@ -43,7 +43,7 @@ assert(standaloneBasic.includes('Basic [REDACTED]'), 'Standalone Basic auth toke
 const complexObj = {
   apiKey: 'secret_key_123',
   apiToken: 'secret_token_456',
-  message: 'Failed to dial +917338626120 with callerId 08047285774',
+  message: 'Failed to dial +919000000001 with callerId 04400000000',
   nested: {
     phone: '+919535584969',
     auth: 'secret_auth'
@@ -53,8 +53,8 @@ const sanitizedObj = sanitizeExotelData(complexObj);
 assert(sanitizedObj.apiKey === '[REDACTED]', 'apiKey property redacted in object');
 assert(sanitizedObj.apiToken === '[REDACTED]', 'apiToken property redacted in object');
 assert(sanitizedObj.nested.auth === '[REDACTED]', 'nested auth property redacted');
-assert(sanitizedObj.message.includes('+91*****6120'), 'Phone in message masked');
-assert(sanitizedObj.message.includes('0*****5774'), 'Landline in message masked');
+assert(sanitizedObj.message.includes('+91*****0001'), 'Phone in message masked');
+assert(sanitizedObj.message.includes('0*****0000'), 'Landline in message masked');
 assert(sanitizedObj.nested.phone === '+91*****4969', 'Nested phone masked');
 
 // 2. XML & JSON Response Parsing Tests
@@ -76,7 +76,7 @@ const xmlErr = `<?xml version="1.0" encoding="UTF-8"?>
 <TwilioResponse>
   <RestException>
     <Status>400</Status>
-    <Message>CallerId 08047285774 is not registered</Message>
+    <Message>CallerId 04400000000 is not registered</Message>
     <Code>20002</Code>
     <MoreInfo>https://support.exotel.com</MoreInfo>
   </RestException>
@@ -84,20 +84,20 @@ const xmlErr = `<?xml version="1.0" encoding="UTF-8"?>
 const parsedXml = parseExotelResponseBody(xmlErr);
 assert(parsedXml.status === 400, 'Parsed XML status is 400');
 assert(parsedXml.code === 20002, 'Parsed XML code is 20002');
-assert(parsedXml.message === 'CallerId 08047285774 is not registered', 'Parsed XML message matches');
+assert(parsedXml.message === 'CallerId 04400000000 is not registered', 'Parsed XML message matches');
 
 // Set up clean environment variables for mock handler testing
 process.env.EXOTEL_ACCOUNT_SID = 'mock_sid';
 process.env.EXOTEL_API_KEY = 'mock_key';
 process.env.EXOTEL_API_TOKEN = 'mock_token';
 process.env.EXOTEL_SUBDOMAIN = 'api.exotel.com';
-process.env.EXOTEL_CALLER_ID = '08047285774';
-process.env.EXOTEL_AGENT_PHONE = '+917204104491';
+process.env.EXOTEL_CALLER_ID = '04400000000';
+process.env.EXOTEL_AGENT_PHONE = '+919000000000';
 
 const validEvent = {
   httpMethod: 'POST',
   body: JSON.stringify({
-    to: '+917338626120',
+    to: '+919000000001',
     clientName: 'Ashray K'
   })
 };
@@ -112,7 +112,7 @@ global.fetch = async () => {
     text: async () => JSON.stringify({
       RestException: {
         Status: 400,
-        Message: 'CallerId 08047285774 is not a valid ExoPhone',
+        Message: 'CallerId 04400000000 is not a valid ExoPhone',
         Code: 20002
       }
     })
@@ -126,8 +126,8 @@ assert(body400.success === false, 'Body success is false');
 assert(body400.error === 'EXOTEL_API_ERROR', 'Error identifier is EXOTEL_API_ERROR');
 assert(body400.providerStatus === 400, 'providerStatus matches upstream 400');
 assert(body400.providerCode === 20002, 'providerCode matches upstream 20002');
-assert(body400.message.includes('0*****5774'), `Phone number in error message is masked (got: "${body400.message}")`);
-assert(!body400.message.includes('08047285774'), 'Unmasked landline is not in message');
+assert(body400.message.includes('0*****0000'), `Phone number in error message is masked (got: "${body400.message}")`);
+assert(!body400.message.includes('04400000000'), 'Unmasked landline is not in message');
 assert(body400.troubleshooting.includes('Exotel Bad Request (400)'), 'Actionable 400 troubleshooting note included');
 assert(body400.troubleshooting.includes('EXOTEL_CALLER_ID'), 'Points to EXOTEL_CALLER_ID in 400 hint');
 
@@ -191,7 +191,7 @@ global.fetch = async () => {
     text: async () => JSON.stringify({
       RestException: {
         Status: 403,
-        Message: 'Destination phone number +917338626120 is not whitelisted in trial account',
+        Message: 'Destination phone number +919000000001 is not whitelisted in trial account',
         Code: 20004
       }
     })
@@ -203,8 +203,8 @@ assert(res403.statusCode === 502, 'Handler returns HTTP 502 for upstream 403 err
 const body403 = JSON.parse(res403.body);
 assert(body403.providerStatus === 403, 'providerStatus matches upstream 403');
 assert(body403.providerCode === 20004, 'providerCode matches upstream 20004');
-assert(body403.message.includes('+91*****6120'), 'Phone number in 403 message is masked');
-assert(!body403.message.includes('+917338626120'), 'Full phone number is not exposed in 403 message');
+assert(body403.message.includes('+91*****0001'), 'Phone number in 403 message is masked');
+assert(!body403.message.includes('+919000000001'), 'Full phone number is not exposed in 403 message');
 assert(body403.troubleshooting.includes('whitelisted'), 'Troubleshooting mentions trial whitelist requirement');
 
 console.log('\n================================================================');
