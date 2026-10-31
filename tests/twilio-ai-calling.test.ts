@@ -20,6 +20,9 @@ import {
   clearTwilioSession,
   terminateTwilioCall,
   verifyAndClearStaleActiveCall,
+  logRawTwilioResponse,
+  rawTwilioLogHistory,
+  inFlightInitiations,
   TERMINAL_TWILIO_STATUSES,
   StructuredAiTurnResponse,
   TwilioVoiceSession
@@ -785,10 +788,142 @@ async function runTwilioTestSuite() {
   assert(activeForTerm.durationSeconds >= 12, 'Call duration accurately recorded');
   assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Active session lock released; ready for new call');
 
+  // --------------------------------------------------------------------------
+  // TEST 33: Completed-Call Cleanup & Immediate Second Call (Requirement 2 & 6)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 33] Completed-Call Cleanup & Immediate Second Call (Requirement 2 & 6)');
+  // 1. First call starts and completes
+  const firstCall = await initiateTwilioOutboundCall(
+    { to: '+917204104491', clientName: 'Chinmay', product: 'Ortho GRID' },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(firstCall.success === true, 'First outbound call creates successfully');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === true, 'Active call lock held while first call is ongoing');
+
+  // 2. First call transitions to completed
+  clearTwilioSession(firstCall.sessionId!, 'Call completed normally by customer hangup', 'completed');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Session lock released immediately upon call completion');
+
+  // 3. Second call initiated without any force flag
+  const secondCall = await initiateTwilioOutboundCall(
+    { to: '+917204104491', clientName: 'Chinmay', product: 'SmartGRID Luxe', force: false },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(secondCall.success === true, 'Second call succeeds immediately after first call completes');
+  assert(secondCall.status === 'queued', 'Second call starts with status queued');
+  clearTwilioSession(secondCall.sessionId!, 'Second call test teardown', 'completed');
 
   // --------------------------------------------------------------------------
-  // SUMMARY
+  // TEST 34: Genuine Active Call Blocking (Requirement 7 & 11)
   // --------------------------------------------------------------------------
+  console.log('\n[TEST 34] Genuine Active Call Blocking (Requirement 7 & 11)');
+  const liveOngoingSession = createTwilioVoiceSession({
+    leadId: 'lead-test-34',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  bindTwilioCallSid(liveOngoingSession.sessionId, 'CASIM_ongoing_call_999');
+  updateTwilioSessionStatus(liveOngoingSession.sessionId, 'in-progress');
+
+  // Attempting another call without force MUST be blocked
+  const blockedAttempt = await initiateTwilioOutboundCall(
+    { to: '+917204104491', clientName: 'Chinmay', product: 'Ortho GRID', force: false },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(blockedAttempt.success === false, 'New call is blocked while a genuine call is in-progress');
+  assert(blockedAttempt.error === 'DUPLICATE_CALL_IN_PROGRESS', 'Error code is DUPLICATE_CALL_IN_PROGRESS');
+  assert(blockedAttempt.message?.includes('already ongoing'), 'Rejection message clearly states call is ongoing');
+  assert(liveOngoingSession.status === 'in-progress', 'Genuine active call is NOT terminated to bypass lock');
+
+  // Terminate genuine call properly
+  await terminateTwilioCall({ sessionId: liveOngoingSession.sessionId }, testEnv);
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Active lock released after terminating genuine call');
+
+  // --------------------------------------------------------------------------
+  // TEST 35: Concurrency Guard - In-Flight Initiation Race Condition (Requirement 10)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 35] Concurrency Guard - In-Flight Initiation Race Condition (Requirement 10)');
+  const testPhone = '+917204104491';
+  inFlightInitiations.add(testPhone);
+
+  const concurrentRejectedCall = await initiateTwilioOutboundCall(
+    { to: testPhone, clientName: 'Chinmay' },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(concurrentRejectedCall.success === false, 'Simultaneous call initiation is blocked by mutex');
+  assert(concurrentRejectedCall.error === 'CONCURRENT_CALL_INITIATION', 'Error code is CONCURRENT_CALL_INITIATION');
+
+  inFlightInitiations.delete(testPhone);
+  const subsequentAllowedCall = await initiateTwilioOutboundCall(
+    { to: testPhone, clientName: 'Chinmay' },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(subsequentAllowedCall.success === true, 'Call initiation succeeds after in-flight lock is released');
+  clearTwilioSession(subsequentAllowedCall.sessionId!, 'Test 35 teardown', 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 36: Raw Twilio Response Logging Security & Completeness (Requirement 4)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 36] Raw Twilio Response Logging Security & Completeness (Requirement 4)');
+  const dummyError = {
+    status: 400,
+    code: 21216,
+    message: 'The number +917204104491 is unverified in Trial account.',
+    more_info: 'https://www.twilio.com/docs/errors/21216'
+  };
+
+  const loggedError = logRawTwilioResponse('client.calls.create:test', dummyError, {
+    to: '+917204104491',
+    callSid: 'CAmock_error_sid'
+  });
+
+  assert(loggedError.httpStatus === 400, 'HTTP status 400 logged accurately');
+  assert(loggedError.twilioErrorCode === 21216, 'Twilio error code 21216 logged accurately');
+  assert(loggedError.moreInfo?.includes('21216') === true, 'Twilio more_info URL logged');
+  assert(loggedError.toMasked?.includes('***') === true, 'Customer phone number is masked');
+  assert(loggedError.success === false, 'Error logged as success=false');
+  assert(rawTwilioLogHistory.length > 0, 'Entry added to rawTwilioLogHistory buffer');
+
+  // Verify credentials are NEVER present in log entries
+  const rawLogJson = JSON.stringify(loggedError);
+  assert(!rawLogJson.includes('auth_token') && !rawLogJson.includes('AUTH_TOKEN'), 'Raw logs never contain auth token');
+  assert(!rawLogJson.includes('ACmock'), 'Raw logs never leak sensitive Twilio credentials');
+
+  // --------------------------------------------------------------------------
+  // TEST 37: Stale Session Recovery & Orphaned Session Auto-Clear (Requirements 5, 8, 9)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 37] Stale Session Recovery & Orphaned Session Auto-Clear (Requirements 5, 8, 9)');
+  // 1. Create an orphaned session with no Call SID older than 12 seconds
+  const orphanedSession = createTwilioVoiceSession({
+    leadId: 'lead-test-37-orphaned',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  orphanedSession.createdAt = Date.now() - 15000; // 15 seconds old without Call SID
+
+  // verifyAndClearStaleActiveCall must detect orphaned state and auto-clear it
+  const verifyOrphaned = await verifyAndClearStaleActiveCall('+917204104491', testEnv, false);
+  assert(verifyOrphaned.hasActiveCall === false, 'Orphaned session without Call SID (>10s) is auto-cleared');
+  assert(orphanedSession.status === 'completed', 'Orphaned session marked completed');
+
+  // 2. Simulate browser refresh / page unload recovery using terminateTwilioCall with stored payload
+  const refreshSession = createTwilioVoiceSession({
+    leadId: 'lead-test-37-refresh',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  updateTwilioSessionStatus(refreshSession.sessionId, 'customer_answered');
+
+  // Simulated browser reload beacon
+  const beaconResult = await terminateTwilioCall({
+    sessionId: refreshSession.sessionId,
+    phone: '+917204104491'
+  }, testEnv);
+  assert(beaconResult.success === true, 'Browser reload recovery terminates call and clears session');
+  assert(hasActiveCallForLeadOrPhone('+917204104491') === false, 'Active lock released after browser recovery beacon');
   console.log('\n================================================================');
   console.log(` RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log('================================================================\n');

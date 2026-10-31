@@ -831,7 +831,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             notes: notes || '',
             isTrialSample: Boolean(isTrialSample),
             sampleTwiMLUrl,
-            clearStale: clearStale ?? true,
+            clearStale: clearStale ?? false,
             force: Boolean(force)
           })
         });
@@ -851,7 +851,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               notes: notes || '',
               isTrialSample: Boolean(isTrialSample),
               sampleTwiMLUrl,
-              clearStale: clearStale ?? true,
+              clearStale: clearStale ?? false,
               force: Boolean(force)
             })
           });

@@ -86,9 +86,75 @@ export const TERMINAL_TWILIO_STATUSES = new Set<string>([
   'canceled'
 ]);
 
+export interface RawTwilioLogEntry {
+  timestamp: string;
+  operation: string;
+  httpStatus?: number;
+  twilioErrorCode?: number | string;
+  message?: string;
+  moreInfo?: string;
+  callSid?: string;
+  toMasked?: string;
+  success: boolean;
+}
+
+// In-memory ring buffer for recent raw Twilio API logs (diagnostics & tests)
+export const rawTwilioLogHistory: RawTwilioLogEntry[] = [];
+
+/**
+ * Logs raw Twilio response separately, capturing HTTP status, Twilio error code, message, and more_info.
+ * Never logs credentials, auth tokens, or unmasked sensitive data.
+ */
+export function logRawTwilioResponse(
+  operation: string,
+  resultOrError: any,
+  context?: { callSid?: string; to?: string; sessionId?: string }
+): RawTwilioLogEntry {
+  const isError = resultOrError instanceof Error || Boolean(resultOrError?.code && resultOrError?.status >= 400);
+  const rawStatus = resultOrError?.status;
+  const httpStatus = typeof rawStatus === 'number' ? rawStatus : parseInt(rawStatus, 10) || (isError ? 500 : 200);
+  const twilioErrorCode = resultOrError?.code || (isError ? 'TWILIO_ERROR' : undefined);
+  const message = resultOrError?.message || (isError ? 'Unknown Twilio error' : 'Success');
+  const moreInfo = resultOrError?.moreInfo || resultOrError?.more_info || undefined;
+  const callSid = context?.callSid || resultOrError?.sid || undefined;
+  const toMasked = context?.to ? maskPhoneNumber(context.to) : undefined;
+
+  const logEntry: RawTwilioLogEntry = {
+    timestamp: new Date().toISOString(),
+    operation,
+    httpStatus,
+    twilioErrorCode,
+    message,
+    moreInfo,
+    callSid,
+    toMasked,
+    success: !isError
+  };
+
+  rawTwilioLogHistory.unshift(logEntry);
+  if (rawTwilioLogHistory.length > 50) {
+    rawTwilioLogHistory.pop();
+  }
+
+  if (isError) {
+    console.error(
+      `[TwilioService:RawResponse:ERROR] Op: ${operation} | HTTP Status: ${httpStatus} | Twilio Code: ${twilioErrorCode || 'NONE'} | Message: ${message}${moreInfo ? ` | MoreInfo: ${moreInfo}` : ''} | CallSID: ${callSid || 'NONE'} | Recipient: ${toMasked || 'NONE'}`
+    );
+  } else {
+    console.log(
+      `[TwilioService:RawResponse:SUCCESS] Op: ${operation} | HTTP Status: ${httpStatus} | CallSID: ${callSid || 'NONE'} | Recipient: ${toMasked || 'NONE'}`
+    );
+  }
+
+  return logEntry;
+}
+
 // In-memory active session registries
 const activeSessions = new Map<string, TwilioVoiceSession>();
 const sidToSessionId = new Map<string, string>();
+
+// Concurrency mutex: In-flight outbound call initiation set to prevent race-condition duplicate calls
+export const inFlightInitiations = new Set<string>();
 
 /**
  * Idempotently clears or marks an active Twilio session as terminal.
@@ -398,22 +464,31 @@ export async function verifyAndClearStaleActiveCall(
   }
 
   for (const session of matchingSessions) {
-    // 1. Inactivity auto-clear (>60s)
-    if (now - session.updatedAt > 60000) {
+    // 1. Auto-clear orphaned sessions without Call SID (>10s old)
+    if (!session.callSid) {
+      if (now - session.createdAt > 10000) {
+        console.log(`[TwilioService] Auto-clearing orphaned session ${session.sessionId} without Call SID (>10s old)`);
+        clearTwilioSession(session.sessionId, 'Orphaned session without Call SID (>10s old)', 'completed');
+        continue;
+      }
+    }
+
+    // 2. Inactivity auto-clear (>45s)
+    if (now - session.updatedAt > 45000) {
       console.log(`[TwilioService] Auto-clearing stale session ${session.sessionId} (inactive for ${Math.round((now - session.updatedAt) / 1000)}s)`);
-      clearTwilioSession(session.sessionId, 'Cleared stale inactive session (>60s)', 'completed');
+      clearTwilioSession(session.sessionId, 'Cleared stale inactive session (>45s)', 'completed');
       continue;
     }
 
-    // 2. Simulation call timeout (>30s)
+    // 3. Simulation call timeout (>20s)
     if (session.callSid && session.callSid.startsWith('CASIM_')) {
-      if (now - session.createdAt > 30000) {
+      if (now - session.createdAt > 20000) {
         clearTwilioSession(session.sessionId, 'Simulation call expired', 'completed');
         continue;
       }
     }
 
-    // 3. Live Twilio REST API check if real CallSid exists
+    // 4. Live Twilio REST API check if real CallSid exists
     if (
       session.callSid &&
       session.callSid.startsWith('CA') &&
@@ -424,6 +499,7 @@ export async function verifyAndClearStaleActiveCall(
       try {
         const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
         const liveCall = await client.calls(session.callSid).fetch();
+        logRawTwilioResponse('client.calls.fetch:verifyActive', liveCall, { callSid: session.callSid, sessionId: session.sessionId });
         const liveStatus = (liveCall.status || '').toLowerCase();
         console.log(`[TwilioService] Live Twilio status check for ${session.callSid}: ${liveStatus}`);
 
@@ -435,6 +511,7 @@ export async function verifyAndClearStaleActiveCall(
           }
           continue;
         } else {
+          // Genuinely active call (queued, initiated, ringing, in-progress) -> Keep lock
           return {
             hasActiveCall: true,
             activeSession: session,
@@ -442,9 +519,21 @@ export async function verifyAndClearStaleActiveCall(
           };
         }
       } catch (err: any) {
-        console.warn(`[TwilioService] Error verifying live Twilio status for ${session.callSid}: ${err?.message || err}. Clearing stale lock.`);
-        clearTwilioSession(session.sessionId, `Twilio live verify error: ${err?.message || 'unknown'}`, 'completed');
-        continue;
+        logRawTwilioResponse('client.calls.fetch:verifyActive', err, { callSid: session.callSid, sessionId: session.sessionId });
+        console.warn(`[TwilioService] Error verifying live Twilio status for ${session.callSid}: ${err?.message || err}.`);
+        if (err?.status === 404 || err?.code === 20404) {
+          clearTwilioSession(session.sessionId, `Twilio call not found (${err?.code || '404'})`, 'completed');
+          continue;
+        } else if (now - session.updatedAt > 30000) {
+          clearTwilioSession(session.sessionId, `Cleared stale session after verify error (${err?.message || 'unknown'})`, 'completed');
+          continue;
+        } else {
+          return {
+            hasActiveCall: true,
+            activeSession: session,
+            liveTwilioStatus: 'unknown'
+          };
+        }
       }
     }
   }
@@ -810,188 +899,215 @@ export async function initiateTwilioOutboundCall(
   }
 
   const normalizedTo = normalizePhoneNumber(payload.to);
-  const allowCheck = isAllowedTwilioRecipient(normalizedTo, env);
 
-  if (!allowCheck.allowed) {
+  // Concurrency guard: reject simultaneous initiation requests for the same recipient
+  if (inFlightInitiations.has(normalizedTo)) {
+    console.warn(`[TwilioService] Concurrent call initiation rejected for ${maskPhoneNumber(normalizedTo)}: request already in flight`);
     return {
       success: false,
       stage: 'idle',
       status: 'rejected',
       callSid: undefined,
       to: maskPhoneNumber(normalizedTo),
-      from: creds.fromNumber!,
+      from: creds.fromNumber || '[NONE]',
       isTrial: creds.isTrial,
       liveCallEnabled: false,
-      error: 'RECIPIENT_NOT_ALLOWED',
-      message: allowCheck.reason,
-      troubleshooting: `In Twilio trial accounts, you must verify destination numbers in Twilio Console > Phone Numbers > Verified Caller IDs, or add them to TWILIO_ALLOWED_TO_NUMBERS.`
+      error: 'CONCURRENT_CALL_INITIATION',
+      message: `A call initiation is currently in progress for ${maskPhoneNumber(normalizedTo)}. Please wait a few seconds before trying again.`,
+      troubleshooting: 'Concurrent requests for the same recipient are serialized to prevent accidental duplicate telephone calls.'
     };
   }
 
-  // Pre-call validation: Check if a genuine active call is ongoing, clearing stale sessions automatically
-  const activeCheck = await verifyAndClearStaleActiveCall(
-    normalizedTo,
-    env,
-    Boolean(payload.force || payload.clearStale)
-  );
-
-  if (activeCheck.hasActiveCall) {
-    return {
-      success: false,
-      stage: 'idle',
-      status: 'rejected',
-      callSid: undefined,
-      to: maskPhoneNumber(normalizedTo),
-      from: creds.fromNumber!,
-      isTrial: creds.isTrial,
-      liveCallEnabled: false,
-      error: 'DUPLICATE_CALL_IN_PROGRESS',
-      message: `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude or clear the session lock.`,
-      troubleshooting: 'If the previous call has already finished on your telephone, click "Clear Session & Retry" to immediately release the local active session.'
-    };
-  }
-
-  // Create session
-  const maxTurns = parseInt(env.TWILIO_MAX_CONVERSATION_TURNS || '6', 10);
-  const isTrialSample = Boolean(payload.isTrialSample || env.TWILIO_USE_SAMPLE_URL === 'true');
-  const sampleTwiMLUrl = payload.sampleTwiMLUrl || 'http://demo.twilio.com/docs/voice.xml';
-
-  const session = createTwilioVoiceSession({
-    leadId: payload.leadId || 'lead-1',
-    customerName: payload.clientName || 'Valued Customer',
-    customerPhone: normalizedTo,
-    product: payload.product || 'Ortho GRID Mattress',
-    value: payload.value,
-    buyingSignals: payload.buyingSignals,
-    notes: payload.notes,
-    maxTurns
-  });
-  session.isTrialSample = isTrialSample;
-  session.trialSampleUrl = isTrialSample ? sampleTwiMLUrl : undefined;
-
-  const webhookBaseUrl = (env.TWILIO_WEBHOOK_BASE_URL || 'https://YOUR-NGROK-DOMAIN.ngrok-free.app').replace(/\/+$/, '');
-  const voiceWebhookUrl = `${webhookBaseUrl}${env.TWILIO_VOICE_WEBHOOK_PATH || '/api/twilio/voice'}?sessionId=${encodeURIComponent(session.sessionId)}`;
-  const statusCallbackUrl = `${webhookBaseUrl}${env.TWILIO_STATUS_WEBHOOK_PATH || '/api/twilio/status'}?sessionId=${encodeURIComponent(session.sessionId)}`;
-  const effectiveVoiceUrl = isTrialSample ? sampleTwiMLUrl : voiceWebhookUrl;
-
-  const liveCallEnabled = env.TWILIO_ENABLE_LIVE_CALLS === 'true';
-
-  console.log(`[TwilioService] Initiating Outbound call: To=${maskPhoneNumber(normalizedTo)}, From=${maskPhoneNumber(env.TWILIO_FROM_NUMBER!)}, SessionId=${session.sessionId}, Live=${liveCallEnabled}, SampleMode=${isTrialSample}`);
-
-  if (!liveCallEnabled) {
-    // Simulated outbound call progression (Safety Mode)
-    // Use clear simulation prefix to avoid confusing with real Twilio Call SIDs
-    const simulatedCallSid = 'CASIM_' + Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 10);
-    bindTwilioCallSid(session.sessionId, simulatedCallSid);
-    updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: simulatedCallSid, startedAt: Date.now() });
-
-    // Transition to ringing after short delay
-    setTimeout(() => {
-      const s = getTwilioSession(session.sessionId);
-      if (s && s.status === 'queued') {
-        updateTwilioSessionStatus(session.sessionId, 'ringing');
-      }
-    }, 1500);
-
-    return {
-      success: true,
-      stage: 'call_created',
-      callSid: simulatedCallSid,
-      sessionId: session.sessionId,
-      status: 'queued',
-      to: maskPhoneNumber(normalizedTo),
-      from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
-      isTrial: creds.isTrial,
-      liveCallEnabled: false,
-      isSimulation: true,
-      isTrialSample,
-      trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
-      message: isTrialSample
-        ? 'Twilio call initiated in Trial Sample Simulation mode (http://demo.twilio.com/docs/voice.xml). Customer phone is safe. NOTE: This is a static carrier test and NOT an AI conversation.'
-        : 'Twilio call initiated in Safety Simulation mode (TWILIO_ENABLE_LIVE_CALLS=false). Customer phone is safe.'
-    };
-  }
-
-  // Real Twilio Outbound Call via Programmable Voice API
+  inFlightInitiations.add(normalizedTo);
   try {
-    const client = twilio(env.TWILIO_ACCOUNT_SID!, env.TWILIO_AUTH_TOKEN!);
-    const maxDuration = parseInt(env.TWILIO_MAX_CALL_DURATION_SECONDS || '600', 10);
+    const allowCheck = isAllowedTwilioRecipient(normalizedTo, env);
 
-    // Build call creation options according to account tier:
-    // Trial accounts strictly disallow statusCallbackEvent and timeLimit (HTTP 400 rejection).
-    // Upgraded accounts unlock the full parameter set.
-    const callOptions: any = {
-      from: env.TWILIO_FROM_NUMBER!,
-      to: normalizedTo,
-      url: effectiveVoiceUrl
-    };
-
-    if (!creds.isTrial) {
-      callOptions.statusCallback = statusCallbackUrl;
-      callOptions.statusCallbackMethod = 'POST';
-      callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
-      callOptions.timeLimit = maxDuration;
+    if (!allowCheck.allowed) {
+      return {
+        success: false,
+        stage: 'idle',
+        status: 'rejected',
+        callSid: undefined,
+        to: maskPhoneNumber(normalizedTo),
+        from: creds.fromNumber!,
+        isTrial: creds.isTrial,
+        liveCallEnabled: false,
+        error: 'RECIPIENT_NOT_ALLOWED',
+        message: allowCheck.reason,
+        troubleshooting: `In Twilio trial accounts, you must verify destination numbers in Twilio Console > Phone Numbers > Verified Caller IDs, or add them to TWILIO_ALLOWED_TO_NUMBERS.`
+      };
     }
 
-    const call = await client.calls.create(callOptions);
+    // Pre-call validation: Check if a genuine active call is ongoing, clearing stale sessions automatically
+    // Strictly preserve genuine active calls unless explicitly forced by user
+    const activeCheck = await verifyAndClearStaleActiveCall(
+      normalizedTo,
+      env,
+      Boolean(payload.force)
+    );
 
-    bindTwilioCallSid(session.sessionId, call.sid);
-    updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: call.sid, startedAt: Date.now() });
-
-    return {
-      success: true,
-      stage: 'call_created',
-      callSid: call.sid,
-      sessionId: session.sessionId,
-      status: call.status || 'queued',
-      to: maskPhoneNumber(normalizedTo),
-      from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
-      isTrial: creds.isTrial,
-      liveCallEnabled: true,
-      isSimulation: false,
-      isTrialSample,
-      trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
-      message: isTrialSample
-        ? `Twilio official carrier test call created: ${call.sid}. Dispatching static demo audio (${sampleTwiMLUrl}) to customer mobile. NOTE: This is a static carrier test and NOT an AI conversation.`
-        : `Twilio outbound call successfully created: ${call.sid}. Dispatching to customer mobile.`
-    };
-  } catch (err: any) {
-    console.error('[TwilioService] Outbound call API error:', err?.message || err);
-    updateTwilioSessionStatus(session.sessionId, 'failed', { providerError: err?.message || 'Twilio API failure' });
-
-    const isTrialParamError =
-      typeof err?.message === 'string' &&
-      (err.message.toLowerCase().includes('trial accounts have limited parameter access') ||
-       err.message.toLowerCase().includes('invalid or disallowed parameters'));
-
-    let troubleshooting = 'Verify your Twilio credentials, verified numbers, and international permissions in Twilio Console.';
-    if (isTrialParamError || creds.isTrial) {
-      troubleshooting = 'Trial Account Parameter Limitation: Advanced parameters (such as statusCallbackEvent, timeLimit, custom SIP/recording) are restricted on free trial accounts. Upgrading your account unlocks full parameter access.';
-    } else if (err?.code === 21216) {
-      troubleshooting = 'Trial account limitation: The destination number is not verified in your Twilio Console.';
-    } else if (err?.code === 21215) {
-      troubleshooting = 'Geographic Permissions: India (+91) voice calling must be enabled under Twilio Console > Voice > Settings > Geo permissions.';
-    } else if (err?.code === 21403) {
-      troubleshooting = 'Webhook URL error: Ensure TWILIO_WEBHOOK_BASE_URL points to an active public HTTPS tunnel (ngrok).';
+    if (activeCheck.hasActiveCall) {
+      return {
+        success: false,
+        stage: 'idle',
+        status: 'rejected',
+        callSid: undefined,
+        to: maskPhoneNumber(normalizedTo),
+        from: creds.fromNumber!,
+        isTrial: creds.isTrial,
+        liveCallEnabled: false,
+        error: 'DUPLICATE_CALL_IN_PROGRESS',
+        message: `An active call session is already ongoing for ${maskPhoneNumber(normalizedTo)}. Please wait for the current call to conclude or clear the session lock.`,
+        troubleshooting: 'If the previous call has already finished on your telephone, click "Clear Stale Session & Retry" to immediately release the local active session.'
+      };
     }
 
-    return {
-      success: false,
-      stage: 'request_accepted', // Stage 1 was accepted, Stage 2 (call creation) failed
-      status: 'rejected',
-      callSid: undefined, // Never display a fake or successful Call SID on failure
-      sessionId: session.sessionId,
-      to: maskPhoneNumber(normalizedTo),
-      from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
-      isTrial: creds.isTrial,
-      trialLimitation: isTrialParamError,
-      rejectedParameters: isTrialParamError ? ['statusCallbackEvent', 'timeLimit'] : [],
-      liveCallEnabled: true,
-      isSimulation: false,
-      error: `TWILIO_${err?.code || '400_REJECTED'}`,
-      message: err?.message || 'Twilio call creation failed',
-      troubleshooting
-    };
+    // Create session
+    const maxTurns = parseInt(env.TWILIO_MAX_CONVERSATION_TURNS || '6', 10);
+    const isTrialSample = Boolean(payload.isTrialSample || env.TWILIO_USE_SAMPLE_URL === 'true');
+    const sampleTwiMLUrl = payload.sampleTwiMLUrl || 'http://demo.twilio.com/docs/voice.xml';
+
+    const session = createTwilioVoiceSession({
+      leadId: payload.leadId || 'lead-1',
+      customerName: payload.clientName || 'Valued Customer',
+      customerPhone: normalizedTo,
+      product: payload.product || 'Ortho GRID Mattress',
+      value: payload.value,
+      buyingSignals: payload.buyingSignals,
+      notes: payload.notes,
+      maxTurns
+    });
+    session.isTrialSample = isTrialSample;
+    session.trialSampleUrl = isTrialSample ? sampleTwiMLUrl : undefined;
+
+    const webhookBaseUrl = (env.TWILIO_WEBHOOK_BASE_URL || 'https://YOUR-NGROK-DOMAIN.ngrok-free.app').replace(/\/+$/, '');
+    const voiceWebhookUrl = `${webhookBaseUrl}${env.TWILIO_VOICE_WEBHOOK_PATH || '/api/twilio/voice'}?sessionId=${encodeURIComponent(session.sessionId)}`;
+    const statusCallbackUrl = `${webhookBaseUrl}${env.TWILIO_STATUS_WEBHOOK_PATH || '/api/twilio/status'}?sessionId=${encodeURIComponent(session.sessionId)}`;
+    const effectiveVoiceUrl = isTrialSample ? sampleTwiMLUrl : voiceWebhookUrl;
+
+    const liveCallEnabled = env.TWILIO_ENABLE_LIVE_CALLS === 'true';
+
+    console.log(`[TwilioService] Initiating Outbound call: To=${maskPhoneNumber(normalizedTo)}, From=${maskPhoneNumber(env.TWILIO_FROM_NUMBER!)}, SessionId=${session.sessionId}, Live=${liveCallEnabled}, SampleMode=${isTrialSample}`);
+
+    if (!liveCallEnabled) {
+      // Simulated outbound call progression (Safety Mode)
+      // Use clear simulation prefix to avoid confusing with real Twilio Call SIDs
+      const simulatedCallSid = 'CASIM_' + Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 10);
+      bindTwilioCallSid(session.sessionId, simulatedCallSid);
+      updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: simulatedCallSid, startedAt: Date.now() });
+
+      // Transition to ringing after short delay
+      setTimeout(() => {
+        const s = getTwilioSession(session.sessionId);
+        if (s && s.status === 'queued') {
+          updateTwilioSessionStatus(session.sessionId, 'ringing');
+        }
+      }, 1500);
+
+      return {
+        success: true,
+        stage: 'call_created',
+        callSid: simulatedCallSid,
+        sessionId: session.sessionId,
+        status: 'queued',
+        to: maskPhoneNumber(normalizedTo),
+        from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
+        isTrial: creds.isTrial,
+        liveCallEnabled: false,
+        isSimulation: true,
+        isTrialSample,
+        trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
+        message: isTrialSample
+          ? 'Twilio call initiated in Trial Sample Simulation mode (http://demo.twilio.com/docs/voice.xml). Customer phone is safe. NOTE: This is a static carrier test and NOT an AI conversation.'
+          : 'Twilio call initiated in Safety Simulation mode (TWILIO_ENABLE_LIVE_CALLS=false). Customer phone is safe.'
+      };
+    }
+
+    // Real Twilio Outbound Call via Programmable Voice API
+    try {
+      const client = twilio(env.TWILIO_ACCOUNT_SID!, env.TWILIO_AUTH_TOKEN!);
+      const maxDuration = parseInt(env.TWILIO_MAX_CALL_DURATION_SECONDS || '600', 10);
+
+      // Build call creation options according to account tier:
+      // Trial accounts strictly disallow statusCallbackEvent and timeLimit (HTTP 400 rejection).
+      // Upgraded accounts unlock the full parameter set.
+      const callOptions: any = {
+        from: env.TWILIO_FROM_NUMBER!,
+        to: normalizedTo,
+        url: effectiveVoiceUrl
+      };
+
+      if (!creds.isTrial) {
+        callOptions.statusCallback = statusCallbackUrl;
+        callOptions.statusCallbackMethod = 'POST';
+        callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
+        callOptions.timeLimit = maxDuration;
+      }
+
+      const call = await client.calls.create(callOptions);
+      logRawTwilioResponse('client.calls.create', call, { callSid: call.sid, to: normalizedTo, sessionId: session.sessionId });
+
+      bindTwilioCallSid(session.sessionId, call.sid);
+      updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: call.sid, startedAt: Date.now() });
+
+      return {
+        success: true,
+        stage: 'call_created',
+        callSid: call.sid,
+        sessionId: session.sessionId,
+        status: call.status || 'queued',
+        to: maskPhoneNumber(normalizedTo),
+        from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
+        isTrial: creds.isTrial,
+        liveCallEnabled: true,
+        isSimulation: false,
+        isTrialSample,
+        trialSampleUrl: isTrialSample ? sampleTwiMLUrl : undefined,
+        message: isTrialSample
+          ? `Twilio official carrier test call created: ${call.sid}. Dispatching static demo audio (${sampleTwiMLUrl}) to customer mobile. NOTE: This is a static carrier test and NOT an AI conversation.`
+          : `Twilio outbound call successfully created: ${call.sid}. Dispatching to customer mobile.`
+      };
+    } catch (err: any) {
+      logRawTwilioResponse('client.calls.create', err, { to: normalizedTo, sessionId: session.sessionId });
+      console.error('[TwilioService] Outbound call API error:', err?.message || err);
+      updateTwilioSessionStatus(session.sessionId, 'failed', { providerError: err?.message || 'Twilio API failure' });
+
+      const isTrialParamError =
+        typeof err?.message === 'string' &&
+        (err.message.toLowerCase().includes('trial accounts have limited parameter access') ||
+         err.message.toLowerCase().includes('invalid or disallowed parameters'));
+
+      let troubleshooting = 'Verify your Twilio credentials, verified numbers, and international permissions in Twilio Console.';
+      if (isTrialParamError || creds.isTrial) {
+        troubleshooting = 'Trial Account Parameter Limitation: Advanced parameters (such as statusCallbackEvent, timeLimit, custom SIP/recording) are restricted on free trial accounts. Upgrading your account unlocks full parameter access.';
+      } else if (err?.code === 21216) {
+        troubleshooting = 'Trial account limitation: The destination number is not verified in your Twilio Console.';
+      } else if (err?.code === 21215) {
+        troubleshooting = 'Geographic Permissions: India (+91) voice calling must be enabled under Twilio Console > Voice > Settings > Geo permissions.';
+      } else if (err?.code === 21403) {
+        troubleshooting = 'Webhook URL error: Ensure TWILIO_WEBHOOK_BASE_URL points to an active public HTTPS tunnel (ngrok).';
+      }
+
+      return {
+        success: false,
+        stage: 'request_accepted', // Stage 1 was accepted, Stage 2 (call creation) failed
+        status: 'rejected',
+        callSid: undefined, // Never display a fake or successful Call SID on failure
+        sessionId: session.sessionId,
+        to: maskPhoneNumber(normalizedTo),
+        from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
+        isTrial: creds.isTrial,
+        trialLimitation: isTrialParamError,
+        rejectedParameters: isTrialParamError ? ['statusCallbackEvent', 'timeLimit'] : [],
+        liveCallEnabled: true,
+        isSimulation: false,
+        error: `TWILIO_${err?.code || '400_REJECTED'}`,
+        message: err?.message || 'Twilio call creation failed',
+        troubleshooting
+      };
+    }
+  } finally {
+    inFlightInitiations.delete(normalizedTo);
   }
 }
 
@@ -1295,6 +1411,7 @@ export async function handleTwilioCallStatusQuery(
     try {
       const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
       const liveCall = await client.calls(session.callSid).fetch();
+      logRawTwilioResponse('client.calls.fetch:pollSync', liveCall, { callSid: session.callSid, sessionId: session.sessionId });
       const liveStatus = (liveCall.status || '').toLowerCase();
       if (TERMINAL_TWILIO_STATUSES.has(liveStatus)) {
         console.log(`[TwilioService:CallStatus] Discovered call ${session.callSid} finished on Twilio (${liveStatus}). Auto-syncing local session.`);
@@ -1304,6 +1421,7 @@ export async function handleTwilioCallStatusQuery(
         }
       }
     } catch (err: any) {
+      logRawTwilioResponse('client.calls.fetch:pollSync', err, { callSid: session.callSid, sessionId: session.sessionId });
       console.warn('[TwilioService:CallStatus] Live poll check warning:', err?.message || err);
     }
   }
@@ -1382,8 +1500,10 @@ export async function terminateTwilioCall(
       const client = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
       const updatedCall = await client.calls(effectiveCallSid).update({ status: 'completed' });
       twilioTerminated = true;
+      logRawTwilioResponse('client.calls.update:terminate', updatedCall, { callSid: effectiveCallSid });
       console.log(`[TwilioService] Twilio REST API disconnected call ${effectiveCallSid}: status=${updatedCall.status}`);
     } catch (err: any) {
+      logRawTwilioResponse('client.calls.update:terminate', err, { callSid: effectiveCallSid });
       console.warn(`[TwilioService] Notice while disconnecting call ${effectiveCallSid} via Twilio REST API: ${err?.message || err}`);
       twilioNotice = err?.message;
     }

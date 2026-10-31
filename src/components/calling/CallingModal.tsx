@@ -556,151 +556,219 @@ export const CallingModal: React.FC = () => {
             )}
 
             {/* Dedicated Twilio Call Rejection Diagnostic Panel */}
-            {callState.mode === 'TWILIO_AI' && (callState.providerError || callState.twilioStage === 'rejected') && (
-              <div style={{
-                margin: '10px 18px',
-                padding: '12px 14px',
-                background: 'rgba(127, 29, 29, 0.45)',
-                border: '1px solid rgba(248, 113, 113, 0.45)',
-                borderRadius: '10px',
-                fontSize: '12px',
-                color: '#fee2e2'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#f87171', marginBottom: '6px' }}>
-                  <AlertCircle size={16} />
-                  <span>Twilio Call Rejected by Provider (HTTP 400)</span>
-                </div>
-                <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>
-                  <strong>Provider Message:</strong> {callState.providerError}
-                </div>
+            {callState.mode === 'TWILIO_AI' && (callState.providerError || callState.twilioStage === 'rejected') && (() => {
+              const isDuplicateLock =
+                callState.twilioErrorDetails?.code === 'DUPLICATE_CALL_IN_PROGRESS' ||
+                (typeof callState.providerError === 'string' && callState.providerError.includes('already ongoing'));
+              const isConcurrentInitiation =
+                callState.twilioErrorDetails?.code === 'CONCURRENT_CALL_INITIATION' ||
+                (typeof callState.providerError === 'string' && callState.providerError.includes('currently in progress'));
 
-                <div style={{
-                  padding: '8px 10px',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  borderRadius: '6px',
-                  borderLeft: '3px solid #f87171',
-                  fontSize: '11px',
-                  lineHeight: 1.5,
-                  marginBottom: '10px'
-                }}>
-                  <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: '3px' }}>
-                    Investigation &amp; Trial Account Parameter Policy:
-                  </div>
-                  <div>• <strong>Rejected Parameters:</strong> Twilio free trial accounts strictly disallow advanced call creation parameters (such as <code>statusCallbackEvent</code> and <code>timeLimit</code>).</div>
-                  <div>• <strong>Trial Number Verification:</strong> Outbound calls can only reach numbers pre-verified under <em>Twilio Console &gt; Phone Numbers &gt; Verified Caller IDs</em>.</div>
-                  <div>• <strong>Upgraded Accounts:</strong> Upgrading your Twilio account to pay-as-you-go immediately unlocks all parameters and unrestricted worldwide calling.</div>
-                  <div>• <strong>Integrity Guarantee:</strong> No fake Call SID or simulated ringing state has been displayed.</div>
-                </div>
+              if (isDuplicateLock || isConcurrentInitiation) {
+                return (
+                  <div style={{
+                    margin: '10px 18px',
+                    padding: '12px 14px',
+                    background: 'rgba(120, 53, 15, 0.45)',
+                    border: '1px solid rgba(251, 191, 36, 0.45)',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    color: '#fef3c7'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#fbbf24', marginBottom: '6px' }}>
+                      <AlertCircle size={16} />
+                      <span>{isConcurrentInitiation ? 'Call Initiation in Progress' : 'Active Call Session Ongoing'}</span>
+                    </div>
+                    <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>
+                      <strong>Status Notice:</strong> {callState.providerError}
+                    </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => {
-                      endCall();
-                      setTimeout(() => {
-                        startCall({
-                          name: callState.contactName,
-                          phone: callState.contactPhone,
-                          mode: 'TWILIO_AI',
-                          isTrialSample: false,
-                          product: callState.productInterest,
-                          value: callState.expectedValue,
-                          force: true,
-                          clearStale: true
-                        });
-                      }, 120);
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      background: '#059669',
-                      border: 'none',
+                    <div style={{
+                      padding: '8px 10px',
+                      background: 'rgba(0, 0, 0, 0.35)',
                       borderRadius: '6px',
-                      color: '#ffffff',
-                      fontWeight: 700,
-                      cursor: 'pointer',
+                      borderLeft: '3px solid #fbbf24',
                       fontSize: '11px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                    }}
-                    title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
-                  >
-                    Clear Stale Session &amp; Retry
-                  </button>
-                  <button
-                    onClick={() => {
-                      endCall();
-                      setTimeout(() => {
-                        startCall({
-                          name: callState.contactName,
-                          phone: callState.contactPhone,
-                          mode: 'TWILIO_AI',
-                          isTrialSample: true,
-                          product: callState.productInterest,
-                          value: callState.expectedValue,
-                          force: true,
-                          clearStale: true
-                        });
-                      }, 120);
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      background: '#ca8a04',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#ffffff',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontSize: '11px'
-                    }}
-                    title="Initiate official Twilio carrier demo audio sample (demo.twilio.com) to test telephone line ringing (Non-AI)"
-                  >
-                    Test Carrier Sample (Non-AI)
-                  </button>
-                  <button
-                    onClick={() => {
-                      endCall();
-                      setTimeout(() => {
-                        startCall({
-                          name: callState.contactName,
-                          phone: callState.contactPhone,
-                          mode: 'TWILIO_AI',
-                          isTrialSample: false,
-                          product: callState.productInterest,
-                          value: callState.expectedValue,
-                          force: true,
-                          clearStale: true
-                        });
-                      }, 120);
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      background: '#0284c7',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#ffffff',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontSize: '11px'
-                    }}
-                  >
-                    Test in Safety Simulation Mode
-                  </button>
-                  <button
-                    onClick={endCall}
-                    style={{
-                      padding: '6px 12px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: '6px',
-                      color: '#e2e8f0',
-                      cursor: 'pointer',
-                      fontSize: '11px'
-                    }}
-                    title="Close modal and release any active session lock"
-                  >
-                    End &amp; Close
-                  </button>
+                      lineHeight: 1.5,
+                      marginBottom: '10px'
+                    }}>
+                      <div style={{ fontWeight: 600, color: '#fde68a', marginBottom: '3px' }}>
+                        Session Lock Protection:
+                      </div>
+                      <div>• <strong>Concurrency Protection:</strong> An active session is currently registered in memory for this phone number to prevent duplicate outbound calls.</div>
+                      <div>• <strong>Stale Call Recovery:</strong> If the previous call has already concluded on your phone, click <strong>&quot;Clear Stale Session &amp; Retry&quot;</strong> to synchronize live status and place the call immediately.</div>
+                      <div>• <strong>Carrier Termination:</strong> Or click <strong>&quot;End &amp; Close&quot;</strong> to issue an explicit disconnect command to Twilio.</div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => {
+                          endCall();
+                          setTimeout(() => {
+                            startCall({
+                              name: callState.contactName,
+                              phone: callState.contactPhone,
+                              mode: 'TWILIO_AI',
+                              isTrialSample: false,
+                              product: callState.productInterest,
+                              value: callState.expectedValue,
+                              force: true,
+                              clearStale: true
+                            });
+                          }, 120);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#059669',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#ffffff',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                        title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
+                      >
+                        Clear Stale Session &amp; Retry
+                      </button>
+                      <button
+                        onClick={endCall}
+                        style={{
+                          padding: '6px 12px',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          borderRadius: '6px',
+                          color: '#e2e8f0',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                        title="Close modal and release any active session lock"
+                      >
+                        End &amp; Close
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{
+                  margin: '10px 18px',
+                  padding: '12px 14px',
+                  background: 'rgba(127, 29, 29, 0.45)',
+                  border: '1px solid rgba(248, 113, 113, 0.45)',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  color: '#fee2e2'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#f87171', marginBottom: '6px' }}>
+                    <AlertCircle size={16} />
+                    <span>Twilio Call Rejected by Provider (HTTP 400)</span>
+                  </div>
+                  <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>
+                    <strong>Provider Message:</strong> {callState.providerError}
+                  </div>
+
+                  <div style={{
+                    padding: '8px 10px',
+                    background: 'rgba(0, 0, 0, 0.35)',
+                    borderRadius: '6px',
+                    borderLeft: '3px solid #f87171',
+                    fontSize: '11px',
+                    lineHeight: 1.5,
+                    marginBottom: '10px'
+                  }}>
+                    <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: '3px' }}>
+                      Investigation &amp; Trial Account Parameter Policy:
+                    </div>
+                    <div>• <strong>Rejected Parameters:</strong> Twilio free trial accounts strictly disallow advanced call creation parameters (such as <code>statusCallbackEvent</code> and <code>timeLimit</code>).</div>
+                    <div>• <strong>Trial Number Verification:</strong> Outbound calls can only reach numbers pre-verified under <em>Twilio Console &gt; Phone Numbers &gt; Verified Caller IDs</em>.</div>
+                    <div>• <strong>Upgraded Accounts:</strong> Upgrading your Twilio account to pay-as-you-go immediately unlocks all parameters and unrestricted worldwide calling.</div>
+                    <div>• <strong>Integrity Guarantee:</strong> No fake Call SID or simulated ringing state has been displayed.</div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => {
+                        endCall();
+                        setTimeout(() => {
+                          startCall({
+                            name: callState.contactName,
+                            phone: callState.contactPhone,
+                            mode: 'TWILIO_AI',
+                            isTrialSample: false,
+                            product: callState.productInterest,
+                            value: callState.expectedValue,
+                            force: true,
+                            clearStale: true
+                          });
+                        }, 120);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#059669',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                      title="Force-clear any stale active session lock and immediately retry the Twilio AI call"
+                    >
+                      Clear Stale Session &amp; Retry
+                    </button>
+                    <button
+                      onClick={() => {
+                        endCall();
+                        setTimeout(() => {
+                          startCall({
+                            name: callState.contactName,
+                            phone: callState.contactPhone,
+                            mode: 'TWILIO_AI',
+                            isTrialSample: true,
+                            product: callState.productInterest,
+                            value: callState.expectedValue,
+                            force: true,
+                            clearStale: true
+                          });
+                        }, 120);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#ca8a04',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontSize: '11px'
+                      }}
+                      title="Initiate official Twilio carrier demo audio sample (demo.twilio.com) to test telephone line ringing (Non-AI)"
+                    >
+                      Test Carrier Sample (Non-AI)
+                    </button>
+                    <button
+                      onClick={endCall}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '6px',
+                        color: '#e2e8f0',
+                        cursor: 'pointer',
+                        fontSize: '11px'
+                      }}
+                      title="Close modal and release any active session lock"
+                    >
+                      End &amp; Close
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Generic Provider Error Notice (non-Twilio modes) */}
             {callState.mode !== 'TWILIO_AI' && callState.providerError && (
