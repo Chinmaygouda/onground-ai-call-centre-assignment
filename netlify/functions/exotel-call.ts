@@ -26,13 +26,13 @@ export interface ExotelDiagnostics {
 
 /**
  * Safely masks Indian and international phone numbers in strings
- * e.g. +917338626120 -> +91*****6120
- *      08047285774 -> 0*****5774
+ * e.g. +919000000001 -> +91*****6120
+ *      04400000000 -> 0*****0000
  */
 export function maskPhoneNumbers(text: string): string {
   if (!text || typeof text !== 'string') return text;
   return text
-    // 1. STD landline with leading 0 (e.g. 08047285774)
+    // 1. STD landline with leading 0 (e.g. 04400000000)
     .replace(/0\d{9,10}/g, (match) => {
       const last4 = match.slice(-4);
       return `0*****${last4}`;
