@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "tunnel": "ngrok http 5173",
     "server:voicebot": "tsx server/exotelVoiceServer.ts",
     "test": "tsx tests/voice-assistant-ui.test.ts && tsx tests/mode3-gemini-live-sync.test.ts && tsx tests/click-to-call.test.ts && tsx tests/responsive-layout.test.ts && tsx tests/customer-voice-assistant-fix.test.ts && tsx tests/voice-assistant-chat-redesign.test.ts && tsx tests/intelligent-customer-callback.test.ts && tsx tests/full-app-audit-and-pulse.test.ts && tsx tests/fluid-responsive-audit.test.ts && tsx tests/netlify-deployment.test.ts && tsx tests/exotel-calling.test.ts && tsx tests/exotel-flow-regression.test.ts && tsx tests/exotel-diagnostics.test.ts && tsx tests/exotel-ai-calling.test.ts && tsx tests/twilio-ai-calling.test.ts",
     "test:twilio": "tsx tests/twilio-ai-calling.test.ts",
