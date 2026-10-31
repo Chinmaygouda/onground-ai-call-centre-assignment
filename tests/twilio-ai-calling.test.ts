@@ -348,6 +348,7 @@ async function runTwilioTestSuite() {
   );
   assert(maxTurnTwiml.includes('<Hangup/>'), 'Call terminates with <Hangup/> when maxTurns reached');
   assert(!maxTurnTwiml.includes('<Gather'), 'No further <Gather> requested after final turn');
+  updateTwilioSessionStatus(maxTurnSession.sessionId, 'completed');
 
   // --------------------------------------------------------------------------
   // TEST 17: Prevention of duplicate calls
@@ -382,6 +383,44 @@ async function runTwilioTestSuite() {
   const exotelNormalized = normalizePhone('+91 73386 26120');
   assert(exotelNormalized.e164 === '+917338626120', 'Exotel phone normalizer remains functional');
   assert(typeof normalizePhone === 'function', 'Exotel service module remains intact');
+
+  // --------------------------------------------------------------------------
+  // TEST 19: Four-Stage Call Lifecycle & Zero-Fake-SID Rejection Policy
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 19] Four-Stage Lifecycle & Zero-Fake-SID Rejection Policy');
+  updateTwilioSessionStatus(callResult.sessionId, 'completed');
+
+  // 1. Simulation call created stage
+  const simCall = await initiateTwilioOutboundCall(
+    { to: '+917204104491', clientName: 'Chinmay' },
+    { ...testEnv, TWILIO_ENABLE_LIVE_CALLS: 'false' }
+  );
+  assert(simCall.success === true, 'Simulation mode request accepted');
+  assert(simCall.stage === 'call_created', 'Stage 2 (call_created) reached in simulation mode');
+  assert(simCall.isSimulation === true, 'Simulation mode explicitly marked as isSimulation=true');
+  assert(simCall.callSid?.startsWith('CASIM_'), 'Simulation SID clearly tagged with CASIM_ prefix');
+
+  // Conclude simulation call
+  updateTwilioSessionStatus(simCall.sessionId, 'completed');
+
+  // 2. Rejected call policy: Never generate fake SID when call fails
+  const blockedCall = await initiateTwilioOutboundCall(
+    { to: '+919999999999', clientName: 'Unverified Customer' },
+    testEnv
+  );
+  assert(blockedCall.success === false, 'Blocked call returns success=false');
+  assert(blockedCall.callSid === undefined, 'No fake Call SID returned when request rejected');
+  assert(blockedCall.status === 'rejected', 'Status explicitly marked as rejected');
+
+  // --------------------------------------------------------------------------
+  // TEST 20: Trial Account Parameter Separation (Trial vs Upgraded Account)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 20] Trial Account Parameter Separation');
+  const trialCreds = validateTwilioCredentials({ ...testEnv, TWILIO_TRIAL_MODE: 'true' });
+  assert(trialCreds.isTrial === true, 'Trial account mode detected for TWILIO_TRIAL_MODE=true');
+
+  const upgradedCreds = validateTwilioCredentials({ ...testEnv, TWILIO_TRIAL_MODE: 'false' });
+  assert(upgradedCreds.isTrial === false, 'Upgraded production account mode detected for TWILIO_TRIAL_MODE=false');
 
   // --------------------------------------------------------------------------
   // SUMMARY

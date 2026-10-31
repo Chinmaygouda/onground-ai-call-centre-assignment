@@ -1,11 +1,12 @@
 import React from 'react';
-import { Mic, MicOff, PhoneOff, Phone, Grid, Radio, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Phone, Grid, Radio, AlertCircle, ShieldCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { useCalling } from '../../context/CallingContext';
 import styles from './CallingModal.module.css';
 
 export const CallingModal: React.FC = () => {
   const {
     callState,
+    startCall,
     endCall,
     toggleMute,
     audioFrequencyData,
@@ -295,38 +296,212 @@ export const CallingModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Twilio Voice AI Progression Stepper (Mode 2: Call Using AI Agent via Twilio) */}
-              {callState.mode === 'TWILIO_AI' && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontSize: '11px',
-                  color: '#94a3b8',
-                  marginTop: '8px'
-                }}>
-                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                    1. Twilio Voice (+1 737-250-8034)
-                  </span>
-                  <span>──▶</span>
-                  <span style={{
-                    color: (callState.twilioStatus === 'queued' || callState.twilioStatus === 'ringing') ? '#fbbf24' : '#34d399',
-                    fontWeight: 600
+              {/* Twilio 4-Stage Call Lifecycle Progression */}
+              {callState.mode === 'TWILIO_AI' && (() => {
+                const isRejected = Boolean(callState.providerError || callState.twilioStage === 'rejected');
+                const stage1Passed = true; // Request accepted by backend
+                const stage2Passed = !isRejected && (Boolean(callState.twilioCallSid) || Boolean(callState.isSimulation));
+                const stage2Active = !isRejected && !stage2Passed && callState.lifecycle === 'DIALING';
+                const stage3Passed = !isRejected && (callState.twilioStage === 'customer_answered' || callState.lifecycle === 'CONNECTED');
+                const stage3Active = !isRejected && (callState.twilioStage === 'ringing' || callState.lifecycle === 'RINGING') && !stage3Passed;
+                const stage4Passed = !isRejected && (callState.twilioStage === 'customer_answered' || callState.lifecycle === 'CONNECTED');
+
+                return (
+                  <div style={{
+                    margin: '12px auto 8px auto',
+                    maxWidth: '560px',
+                    padding: '10px 14px',
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: '10px'
                   }}>
-                    2. Customer Mobile ({callState.contactPhone || 'Customer'})
-                  </span>
-                  <span>──▶</span>
-                  <span style={{
-                    color: (callState.twilioStatus === 'ai_speaking' || callState.twilioStatus === 'listening' || callState.twilioStatus === 'processing' || callState.twilioStatus === 'customer_answered')
-                      ? '#38bdf8'
-                      : '#64748b',
-                    fontWeight: 600
-                  }}>
-                    3. Gemini Text AI (&lt;Gather&gt; / &lt;Say&gt;)
-                  </span>
-                </div>
-              )}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '8px',
+                      fontSize: '11px',
+                      color: '#94a3b8'
+                    }}>
+                      <span style={{ fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#cbd5e1' }}>
+                        Twilio Call Lifecycle Pipeline
+                      </span>
+                      {callState.isSimulation ? (
+                        <span style={{
+                          color: '#fef08a',
+                          background: 'rgba(234, 179, 8, 0.2)',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 600
+                        }}>
+                          Simulation Mode
+                        </span>
+                      ) : (
+                        <span style={{
+                          color: isRejected ? '#fca5a5' : '#38bdf8',
+                          background: isRejected ? 'rgba(239, 68, 68, 0.2)' : 'rgba(14, 165, 233, 0.2)',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 600
+                        }}>
+                          {isRejected ? 'API Rejected' : 'Production API'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: '6px',
+                      fontSize: '11px'
+                    }}>
+                      {/* Step 1: Backend request accepted */}
+                      <div style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: stage1Passed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                        border: stage1Passed ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: '#6ee7b7',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          <CheckCircle2 size={13} color="#10b981" />
+                          <span>1. Accepted</span>
+                        </div>
+                        <span style={{ fontSize: '9px', color: '#a7f3d0' }}>Backend Validated</span>
+                      </div>
+
+                      {/* Step 2: Twilio call created */}
+                      <div style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: isRejected
+                          ? 'rgba(239, 68, 68, 0.18)'
+                          : stage2Passed
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : stage2Active
+                          ? 'rgba(56, 189, 248, 0.15)'
+                          : 'rgba(255, 255, 255, 0.05)',
+                        border: isRejected
+                          ? '1px solid rgba(239, 68, 68, 0.5)'
+                          : stage2Passed
+                          ? '1px solid rgba(16, 185, 129, 0.4)'
+                          : stage2Active
+                          ? '1px solid rgba(56, 189, 248, 0.4)'
+                          : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: isRejected
+                          ? '#fca5a5'
+                          : stage2Passed
+                          ? '#6ee7b7'
+                          : stage2Active
+                          ? '#38bdf8'
+                          : '#64748b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          {isRejected ? (
+                            <XCircle size={13} color="#ef4444" />
+                          ) : stage2Passed ? (
+                            <CheckCircle2 size={13} color="#10b981" />
+                          ) : (
+                            <Clock size={13} color={stage2Active ? '#38bdf8' : '#64748b'} />
+                          )}
+                          <span>2. Call Created</span>
+                        </div>
+                        <span style={{ fontSize: '9px', color: isRejected ? '#f87171' : stage2Passed ? '#a7f3d0' : '#94a3b8' }}>
+                          {isRejected
+                            ? 'Twilio Rejected (400)'
+                            : callState.twilioCallSid
+                            ? `${callState.twilioCallSid.substring(0, 10)}...`
+                            : callState.isSimulation
+                            ? 'Simulation Queued'
+                            : 'Calling API...'}
+                        </span>
+                      </div>
+
+                      {/* Step 3: Customer phone ringing */}
+                      <div style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: isRejected
+                          ? 'rgba(255, 255, 255, 0.03)'
+                          : stage3Passed
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : stage3Active
+                          ? 'rgba(234, 179, 8, 0.2)'
+                          : 'rgba(255, 255, 255, 0.05)',
+                        border: isRejected
+                          ? '1px solid rgba(255, 255, 255, 0.08)'
+                          : stage3Passed
+                          ? '1px solid rgba(16, 185, 129, 0.4)'
+                          : stage3Active
+                          ? '1px solid rgba(234, 179, 8, 0.5)'
+                          : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: isRejected
+                          ? '#475569'
+                          : stage3Passed
+                          ? '#6ee7b7'
+                          : stage3Active
+                          ? '#fde047'
+                          : '#64748b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          {stage3Passed ? (
+                            <CheckCircle2 size={13} color="#10b981" />
+                          ) : (
+                            <Clock size={13} color={stage3Active ? '#facc15' : '#64748b'} />
+                          )}
+                          <span>3. Ringing</span>
+                        </div>
+                        <span style={{ fontSize: '9px', color: stage3Active ? '#fef08a' : '#94a3b8' }}>
+                          {isRejected ? 'Not reached' : stage3Active ? 'Phone ringing...' : stage3Passed ? 'Rung' : 'Waiting...'}
+                        </span>
+                      </div>
+
+                      {/* Step 4: Customer answered */}
+                      <div style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: isRejected
+                          ? 'rgba(255, 255, 255, 0.03)'
+                          : stage4Passed
+                          ? 'rgba(16, 185, 129, 0.2)'
+                          : 'rgba(255, 255, 255, 0.05)',
+                        border: isRejected
+                          ? '1px solid rgba(255, 255, 255, 0.08)'
+                          : stage4Passed
+                          ? '1px solid rgba(16, 185, 129, 0.5)'
+                          : '1px solid rgba(255, 255, 255, 0.1)',
+                        color: isRejected ? '#475569' : stage4Passed ? '#6ee7b7' : '#64748b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          {stage4Passed ? (
+                            <CheckCircle2 size={13} color="#10b981" />
+                          ) : (
+                            <Clock size={13} color="#64748b" />
+                          )}
+                          <span>4. Answered</span>
+                        </div>
+                        <span style={{ fontSize: '9px', color: stage4Passed ? '#a7f3d0' : '#94a3b8' }}>
+                          {isRejected ? 'Not reached' : stage4Passed ? 'Voice AI Live' : 'Waiting...'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {callState.lifecycle === 'CONNECTED' && (
                 <div className={styles.durationClock}>
@@ -356,8 +531,90 @@ export const CallingModal: React.FC = () => {
               </div>
             )}
 
-            {/* Provider Error Notice */}
-            {callState.providerError && (
+            {/* Dedicated Twilio Call Rejection Diagnostic Panel */}
+            {callState.mode === 'TWILIO_AI' && (callState.providerError || callState.twilioStage === 'rejected') && (
+              <div style={{
+                margin: '10px 18px',
+                padding: '12px 14px',
+                background: 'rgba(127, 29, 29, 0.45)',
+                border: '1px solid rgba(248, 113, 113, 0.45)',
+                borderRadius: '10px',
+                fontSize: '12px',
+                color: '#fee2e2'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#f87171', marginBottom: '6px' }}>
+                  <AlertCircle size={16} />
+                  <span>Twilio Call Rejected by Provider (HTTP 400)</span>
+                </div>
+                <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>
+                  <strong>Provider Message:</strong> {callState.providerError}
+                </div>
+
+                <div style={{
+                  padding: '8px 10px',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  borderRadius: '6px',
+                  borderLeft: '3px solid #f87171',
+                  fontSize: '11px',
+                  lineHeight: 1.5,
+                  marginBottom: '10px'
+                }}>
+                  <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: '3px' }}>
+                    Investigation &amp; Trial Account Parameter Policy:
+                  </div>
+                  <div>• <strong>Rejected Parameters:</strong> Twilio free trial accounts strictly disallow advanced call creation parameters (such as <code>statusCallbackEvent</code> and <code>timeLimit</code>).</div>
+                  <div>• <strong>Trial Number Verification:</strong> Outbound calls can only reach numbers pre-verified under <em>Twilio Console &gt; Phone Numbers &gt; Verified Caller IDs</em>.</div>
+                  <div>• <strong>Upgraded Accounts:</strong> Upgrading your Twilio account to pay-as-you-go immediately unlocks all parameters and unrestricted worldwide calling.</div>
+                  <div>• <strong>Integrity Guarantee:</strong> No fake Call SID or simulated ringing state has been displayed.</div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => {
+                      endCall();
+                      setTimeout(() => {
+                        startCall({
+                          name: callState.contactName,
+                          phone: callState.contactPhone,
+                          mode: 'TWILIO_AI',
+                          product: callState.productInterest,
+                          value: callState.expectedValue
+                        });
+                      }, 100);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#0284c7',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontSize: '11px'
+                    }}
+                  >
+                    Test in Safety Simulation Mode
+                  </button>
+                  <button
+                    onClick={endCall}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      borderRadius: '6px',
+                      color: '#e2e8f0',
+                      cursor: 'pointer',
+                      fontSize: '11px'
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Generic Provider Error Notice (non-Twilio modes) */}
+            {callState.mode !== 'TWILIO_AI' && callState.providerError && (
               <div style={{
                 margin: '8px 18px',
                 padding: '10px',

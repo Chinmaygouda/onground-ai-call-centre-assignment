@@ -180,6 +180,15 @@ export type ExotelCallStatus =
   | 'failed'
   | 'cancelled';
 
+export type TwilioCallStage =
+  | 'idle'
+  | 'request_accepted'
+  | 'call_created'
+  | 'ringing'
+  | 'customer_answered'
+  | 'completed'
+  | 'rejected';
+
 export interface ActiveCallState {
   lifecycle: CallLifecycle;
   mode: CallEngineMode;
@@ -199,6 +208,16 @@ export interface ActiveCallState {
   // Twilio Telephony metadata
   twilioCallSid?: string;
   twilioStatus?: TwilioCallStatus;
+  twilioStage?: TwilioCallStage;
+  twilioErrorDetails?: {
+    code?: string | number;
+    message: string;
+    trialLimitation?: boolean;
+    rejectedParameters?: string[];
+    troubleshooting?: string;
+  };
+  isSimulation?: boolean;
+  simulationSid?: string;
   recordingUrl?: string;
   providerError?: string;
   isConfigured?: boolean;

@@ -593,7 +593,9 @@ export async function initiateTwilioOutboundCall(
   if (!allowCheck.allowed) {
     return {
       success: false,
-      status: 'failed',
+      stage: 'idle',
+      status: 'rejected',
+      callSid: undefined,
       to: maskPhoneNumber(normalizedTo),
       from: creds.fromNumber!,
       isTrial: creds.isTrial,
@@ -608,7 +610,9 @@ export async function initiateTwilioOutboundCall(
   if (hasActiveCallForLeadOrPhone(normalizedTo)) {
     return {
       success: false,
-      status: 'failed',
+      stage: 'idle',
+      status: 'rejected',
+      callSid: undefined,
       to: maskPhoneNumber(normalizedTo),
       from: creds.fromNumber!,
       isTrial: creds.isTrial,
@@ -641,7 +645,8 @@ export async function initiateTwilioOutboundCall(
 
   if (!liveCallEnabled) {
     // Simulated outbound call progression (Safety Mode)
-    const simulatedCallSid = 'CA' + Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 10) + 'test';
+    // Use clear simulation prefix to avoid confusing with real Twilio Call SIDs
+    const simulatedCallSid = 'CASIM_' + Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 10);
     bindTwilioCallSid(session.sessionId, simulatedCallSid);
     updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: simulatedCallSid, startedAt: Date.now() });
 
@@ -655,6 +660,7 @@ export async function initiateTwilioOutboundCall(
 
     return {
       success: true,
+      stage: 'call_created',
       callSid: simulatedCallSid,
       sessionId: session.sessionId,
       status: 'queued',
@@ -662,6 +668,7 @@ export async function initiateTwilioOutboundCall(
       from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
       isTrial: creds.isTrial,
       liveCallEnabled: false,
+      isSimulation: true,
       message: 'Twilio call initiated in Safety Simulation mode (TWILIO_ENABLE_LIVE_CALLS=false). Customer phone is safe.'
     };
   }
@@ -671,21 +678,30 @@ export async function initiateTwilioOutboundCall(
     const client = twilio(env.TWILIO_ACCOUNT_SID!, env.TWILIO_AUTH_TOKEN!);
     const maxDuration = parseInt(env.TWILIO_MAX_CALL_DURATION_SECONDS || '600', 10);
 
-    const call = await client.calls.create({
+    // Build call creation options according to account tier:
+    // Trial accounts strictly disallow statusCallbackEvent and timeLimit (HTTP 400 rejection).
+    // Upgraded accounts unlock the full parameter set.
+    const callOptions: any = {
       from: env.TWILIO_FROM_NUMBER!,
       to: normalizedTo,
       url: voiceWebhookUrl,
       statusCallback: statusCallbackUrl,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      statusCallbackMethod: 'POST',
-      timeLimit: maxDuration
-    });
+      statusCallbackMethod: 'POST'
+    };
+
+    if (!creds.isTrial) {
+      callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
+      callOptions.timeLimit = maxDuration;
+    }
+
+    const call = await client.calls.create(callOptions);
 
     bindTwilioCallSid(session.sessionId, call.sid);
     updateTwilioSessionStatus(session.sessionId, 'queued', { callSid: call.sid, startedAt: Date.now() });
 
     return {
       success: true,
+      stage: 'call_created',
       callSid: call.sid,
       sessionId: session.sessionId,
       status: call.status || 'queued',
@@ -693,14 +709,22 @@ export async function initiateTwilioOutboundCall(
       from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
       isTrial: creds.isTrial,
       liveCallEnabled: true,
-      message: `Twilio outbound call placed to ${maskPhoneNumber(normalizedTo)}.`
+      isSimulation: false,
+      message: `Twilio outbound call successfully created: ${call.sid}. Dispatching to customer mobile.`
     };
   } catch (err: any) {
     console.error('[TwilioService] Outbound call API error:', err?.message || err);
     updateTwilioSessionStatus(session.sessionId, 'failed', { providerError: err?.message || 'Twilio API failure' });
 
+    const isTrialParamError =
+      typeof err?.message === 'string' &&
+      (err.message.toLowerCase().includes('trial accounts have limited parameter access') ||
+       err.message.toLowerCase().includes('invalid or disallowed parameters'));
+
     let troubleshooting = 'Verify your Twilio credentials, verified numbers, and international permissions in Twilio Console.';
-    if (err?.code === 21216) {
+    if (isTrialParamError || creds.isTrial) {
+      troubleshooting = 'Trial Account Parameter Limitation: Advanced parameters (such as statusCallbackEvent, timeLimit, custom SIP/recording) are restricted on free trial accounts. Upgrading your account unlocks full parameter access.';
+    } else if (err?.code === 21216) {
       troubleshooting = 'Trial account limitation: The destination number is not verified in your Twilio Console.';
     } else if (err?.code === 21215) {
       troubleshooting = 'Geographic Permissions: India (+91) voice calling must be enabled under Twilio Console > Voice > Settings > Geo permissions.';
@@ -710,12 +734,18 @@ export async function initiateTwilioOutboundCall(
 
     return {
       success: false,
-      status: 'failed',
+      stage: 'request_accepted', // Stage 1 was accepted, Stage 2 (call creation) failed
+      status: 'rejected',
+      callSid: undefined, // Never display a fake or successful Call SID on failure
+      sessionId: session.sessionId,
       to: maskPhoneNumber(normalizedTo),
       from: maskPhoneNumber(env.TWILIO_FROM_NUMBER!),
       isTrial: creds.isTrial,
+      trialLimitation: isTrialParamError,
+      rejectedParameters: isTrialParamError ? ['statusCallbackEvent', 'timeLimit'] : [],
       liveCallEnabled: true,
-      error: `TWILIO_${err?.code || 'ERROR'}`,
+      isSimulation: false,
+      error: `TWILIO_${err?.code || '400_REJECTED'}`,
       message: err?.message || 'Twilio call creation failed',
       troubleshooting
     };

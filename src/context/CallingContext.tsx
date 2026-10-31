@@ -535,6 +535,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isMuted: false,
       exotelStatus: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI') ? 'initiating' : undefined,
       twilioStatus: mode === 'TWILIO_AI' ? 'initiating' : undefined,
+      twilioStage: mode === 'TWILIO_AI' ? 'request_accepted' : undefined,
       isConfigured: (mode === 'EXOTEL_REAL' || mode === 'EXOTEL_AI' || mode === 'TWILIO_AI') ? true : undefined,
       aiResponseText:
         mode === 'WEBRTC_PEER'
@@ -544,7 +545,7 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : mode === 'EXOTEL_AI'
           ? 'Initiating AI Outbound Voice Call via Exotel Connect Voice AI...'
           : mode === 'TWILIO_AI'
-          ? 'Initiating Twilio customer-first AI outbound call...'
+          ? 'Stage 1: Backend request accepted. Connecting to Twilio Programmable Voice...'
           : 'Connecting secure audio stream...'
     });
 
@@ -792,30 +793,48 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.log(`[Calling:TwilioAI] Backend response: HTTP ${response.status}, success: ${Boolean(data?.success)}`);
 
         if (!response.ok || !data.success) {
-          const displayError = data.message || 'Twilio Call initiation failed';
+          const displayError = data.message || 'Twilio call creation failed';
           const detailedExplanation = data.troubleshooting ? `${displayError} — ${data.troubleshooting}` : displayError;
 
           setCallState((prev) => ({
             ...prev,
             lifecycle: 'ENDED',
             twilioStatus: 'failed',
+            twilioStage: 'rejected',
+            twilioCallSid: undefined, // Never display a fake or successful Call SID on failure
+            simulationSid: undefined,
             providerError: displayError,
-            aiResponseText: detailedExplanation
+            aiResponseText: detailedExplanation,
+            twilioErrorDetails: {
+              code: data.error,
+              message: data.message || displayError,
+              trialLimitation: Boolean(data.trialLimitation || data.isTrial),
+              rejectedParameters: data.rejectedParameters,
+              troubleshooting: data.troubleshooting
+            }
           }));
           return;
         }
 
         const callSid = data.callSid;
         const sessionId = data.sessionId;
-        twilioCallSidRef.current = callSid;
+        const isSimulation = Boolean(data.isSimulation);
+        if (!isSimulation && callSid) {
+          twilioCallSidRef.current = callSid;
+        }
 
         setCallState((prev) => ({
           ...prev,
-          lifecycle: 'RINGING',
-          twilioCallSid: callSid,
+          lifecycle: isSimulation ? 'RINGING' : 'DIALING',
+          twilioCallSid: isSimulation ? undefined : callSid,
+          simulationSid: isSimulation ? callSid : undefined,
+          isSimulation,
           voiceSessionId: sessionId,
           twilioStatus: 'queued',
-          aiResponseText: `Twilio calling customer mobile (${maskedPhone}) directly. Employee phone is bypassed.`
+          twilioStage: 'call_created',
+          aiResponseText: isSimulation
+            ? `Stage 2: Twilio call created in Safety Simulation mode. Advancing to customer ring simulation.`
+            : `Stage 2: Twilio call created successfully (SID: ${callSid}). Waiting for telecom carrier ring status...`
         }));
 
         if (twilioPollIntervalRef.current) {
@@ -854,12 +873,21 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
               setCallState((prev) => ({ ...prev, aiTranscript: fullTranscript }));
             }
 
-            if (currentStatus === 'queued' || currentStatus === 'ringing') {
+            if (currentStatus === 'queued') {
+              setCallState((prev) => ({
+                ...prev,
+                lifecycle: 'DIALING',
+                twilioStatus: 'queued',
+                twilioStage: 'call_created',
+                aiResponseText: `Stage 2: Twilio call queued at carrier gateway. Dispatching to customer mobile...`
+              }));
+            } else if (currentStatus === 'ringing') {
               setCallState((prev) => ({
                 ...prev,
                 lifecycle: 'RINGING',
-                twilioStatus: currentStatus,
-                aiResponseText: `Calling customer (${maskedPhone}). Waiting for answer...`
+                twilioStatus: 'ringing',
+                twilioStage: 'ringing',
+                aiResponseText: `Stage 3: Customer mobile (${maskedPhone}) is ringing on carrier network...`
               }));
             } else if (
               currentStatus === 'customer_answered' ||
@@ -878,19 +906,20 @@ export const CallingProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 }, 1000);
               }
 
-              let responseSnippet = 'Customer answered. AI Assistant speaking...';
+              let responseSnippet = 'Stage 4: Customer answered. AI Assistant speaking...';
               if (currentStatus === 'ai_speaking') {
-                responseSnippet = statusData.transcriptSnippet ? `AI: "${statusData.transcriptSnippet}"` : 'AI Assistant speaking...';
+                responseSnippet = statusData.transcriptSnippet ? `AI: "${statusData.transcriptSnippet}"` : 'Stage 4: Customer answered. AI Assistant speaking...';
               } else if (currentStatus === 'listening') {
-                responseSnippet = 'Listening to customer speech via Twilio <Gather>...';
+                responseSnippet = 'Stage 4: Listening to customer speech via Twilio <Gather>...';
               } else if (currentStatus === 'processing') {
-                responseSnippet = 'Processing customer question with Gemini...';
+                responseSnippet = 'Stage 4: Processing customer question with Gemini...';
               }
 
               setCallState((prev) => ({
                 ...prev,
                 lifecycle: 'CONNECTED',
                 twilioStatus: currentStatus,
+                twilioStage: 'customer_answered',
                 recordingUrl: statusData.recordingUrl || prev.recordingUrl,
                 aiResponseText: responseSnippet
               }));
