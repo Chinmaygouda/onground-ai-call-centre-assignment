@@ -109,14 +109,29 @@ export class BusinessDataProvider implements IBusinessDataProvider {
     }
 
     const q = query.toLowerCase().trim();
+    const isGeneralQuery =
+      q === '' ||
+      q === 'all' ||
+      q === 'all mattresses' ||
+      q === 'mattress' ||
+      q === 'mattresses' ||
+      q === 'options' ||
+      q === 'products' ||
+      q === 'models' ||
+      q === 'catalogue';
+
     const results = this.products.filter((p) => {
       const matchQuery =
+        isGeneralQuery ||
         p.name.toLowerCase().includes(q) ||
         p.slug.toLowerCase().includes(q) ||
         p.tagline.toLowerCase().includes(q) ||
         p.material.toLowerCase().includes(q);
-      const matchCategory = !category || p.category.toLowerCase() === category.toLowerCase();
-      return matchQuery && matchCategory;
+      const matchCategory =
+        !category ||
+        p.category.toLowerCase() === category.toLowerCase() ||
+        (isGeneralQuery && category.toLowerCase() === 'mattress' ? p.category === 'Mattress' : false);
+      return matchQuery && (category ? matchCategory : true);
     });
 
     const metadata = this.generateMetadata('SEARCH-RESULTS');
@@ -354,8 +369,92 @@ export class BusinessDataProvider implements IBusinessDataProvider {
     };
   }
 
+  public async getAllMattresses(): Promise<
+    BusinessDataResult<{
+      mattresses: Array<{
+        id: string;
+        name: string;
+        category: string;
+        tagline: string;
+        material: string;
+        startingPrice: number;
+        variants: VerifiedProduct['variants'];
+        warrantyYears: number;
+        trialNights: number;
+      }>;
+      activeOffers: VerifiedOffer[];
+      deliveryFee: number;
+      emiStartingFrom: number;
+    }>
+  > {
+    const mattresses = this.products
+      .filter((p) => p.category === 'Mattress')
+      .map((m) => {
+        const minPrice = Math.min(...m.variants.map((v) => v.currentPrice));
+        return {
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          tagline: m.tagline,
+          material: m.material,
+          startingPrice: minPrice,
+          variants: m.variants,
+          warrantyYears: m.warrantyYears,
+          trialNights: m.trialNights
+        };
+      });
+
+    const activeOffers = this.offers;
+    const metadata = this.generateMetadata('ALL-MATTRESSES');
+
+    return {
+      verified: true,
+      data: {
+        mattresses,
+        activeOffers,
+        deliveryFee: 0,
+        emiStartingFrom: 1415
+      },
+      metadata
+    };
+  }
+
+  public async getAvailableProducts(category?: string): Promise<BusinessDataResult<VerifiedProduct[]>> {
+    const filtered = category
+      ? this.products.filter((p) => p.category.toLowerCase() === category.toLowerCase())
+      : this.products;
+    const metadata = this.generateMetadata('AVAILABLE-PRODUCTS');
+    return {
+      verified: true,
+      data: filtered,
+      metadata
+    };
+  }
+
+  public async getDeliveryPolicy(_productCategory = 'Mattress'): Promise<BusinessDataResult<VerifiedPolicy>> {
+    const policy = this.policies.find((p) => p.policyType === 'DELIVERY') || {
+      policyType: 'DELIVERY' as const,
+      title: 'Free Pan-India Doorstep White-Glove Delivery',
+      summary: '100% Free pan-India shipping to 18,000+ PIN codes across India within 3 to 5 business days.',
+      detailedTerms: [
+        'Delivery fee: 100% Free (₹0 delivery charge) on all mattress and bed orders.',
+        'Metro cities (Bengaluru, Mumbai, Delhi-NCR, Hyderabad, Chennai): 48 to 72 hours express delivery.',
+        'Tier 2 & 3 cities: 3 to 5 business days.',
+        'Cash on Delivery (COD) available up to ₹15,000 cart value; orders above ₹15,000 require prepaid confirmation.'
+      ],
+      exceptions: ['Extreme remote locations may incur supplementary logistics transit fees.'],
+      metadata: this.generateMetadata('POLICY-DELIVERY')
+    };
+    const metadata = this.generateMetadata('POLICY-DELIVERY', policy.metadata?.lastUpdated);
+    return {
+      verified: true,
+      data: { ...policy, metadata },
+      metadata
+    };
+  }
+
   public async getDeliveryAvailability(
-    pincode: string,
+    pincode?: string,
     _productId?: string
   ): Promise<
     BusinessDataResult<{
@@ -364,18 +463,29 @@ export class BusinessDataProvider implements IBusinessDataProvider {
       estimatedDays: number;
       deliveryFee: number;
       codAvailable: boolean;
+      summary?: string;
     }>
   > {
-    const cleanPin = pincode.replace(/\D/g, '');
-    if (cleanPin.length !== 6) {
+    const cleanPin = (pincode || '').replace(/\D/g, '');
+
+    // If pincode is not provided or incomplete, return default free pan-India delivery details
+    if (!cleanPin || cleanPin.length !== 6) {
+      const metadata = this.generateMetadata('DELIVERY-PAN-INDIA');
       return {
-        verified: false,
-        error: 'INVALID_PINCODE',
-        message: `Pincode '${pincode}' is not a valid 6-digit Indian PIN code.`
+        verified: true,
+        data: {
+          pincode: cleanPin || 'Pan-India',
+          deliverable: true,
+          estimatedDays: 3,
+          deliveryFee: 0,
+          codAvailable: true,
+          summary: 'The Sleep Company provides 100% Free Pan-India Doorstep Delivery (₹0 delivery fee) across 18,000+ PIN codes in India. Express delivery within 48-72 hours for major metro hubs like Bengaluru, Mumbai, and Delhi, and 3-5 days for other locations.'
+        },
+        metadata
       };
     }
 
-    // Major metro hubs (Bangalore: 560xxx, Mumbai: 400xxx, Delhi: 110xxx)
+    // Major metro hubs (Bangalore: 560xxx, Mumbai: 400xxx, Delhi: 110xxx, Hyderabad: 500xxx)
     const isExpress =
       cleanPin.startsWith('560') ||
       cleanPin.startsWith('400') ||
@@ -390,7 +500,8 @@ export class BusinessDataProvider implements IBusinessDataProvider {
         deliverable: true,
         estimatedDays: isExpress ? 2 : 4,
         deliveryFee: 0,
-        codAvailable: true
+        codAvailable: true,
+        summary: `Delivery to PIN ${cleanPin} is 100% Free with estimated transit of ${isExpress ? '48-72 hours' : '3-5 business days'}.`
       },
       metadata
     };

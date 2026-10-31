@@ -116,22 +116,58 @@ export const GEMINI_LIVE_FUNCTION_DECLARATIONS = [
     }
   },
   {
+    name: 'getAllMattresses',
+    description:
+      'Retrieve all available Sleep Company mattress models (SmartGRID Ortho and SmartGRID Luxe), starting prices, all sizes (Single, Queen, King), active festive discounts (FESTIVE1000, COMBOPILLOW), 0% EMI plans, and 100% Free pan-India delivery. Call this whenever a customer asks what mattresses you have, what options are available, or inquires about overall prices and discounts.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {}
+    }
+  },
+  {
+    name: 'getAvailableProducts',
+    description:
+      'Retrieve all verified products across categories (Mattresses, Beds, Recliners, Accessories) with pricing and active offers.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        category: {
+          type: 'STRING',
+          description: "Optional product category filter: 'Mattress', 'Bed', 'Recliner', 'Accessory'"
+        }
+      }
+    }
+  },
+  {
+    name: 'getDeliveryPolicy',
+    description:
+      'Retrieve the official delivery policy, delivery fee (100% Free doorstep delivery, ₹0 delivery fee across India on all mattresses and beds), delivery transit time (48-72h metro, 3-5 days pan-India), and Cash on Delivery (COD) terms. Call this whenever a customer asks about delivery charges, shipping fees, or if delivery is free.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        productCategory: {
+          type: 'STRING',
+          description: "Optional category, defaults to 'Mattress'"
+        }
+      }
+    }
+  },
+  {
     name: 'getDeliveryAvailability',
     description:
-      'Check delivery feasibility, estimated arrival days (2-5 business days), and free shipping eligibility for a customer PIN code in India.',
+      'Check delivery feasibility, estimated arrival days (48-72h metro, 3-5 days tier 2/3), and 100% Free shipping confirmation for a customer PIN code or pan-India.',
     parameters: {
       type: 'OBJECT',
       properties: {
         pincode: {
           type: 'STRING',
-          description: '6-digit Indian PIN code, e.g. 560034'
+          description: 'Optional 6-digit Indian PIN code, e.g. 560034, or omit for pan-India delivery details'
         },
         productId: {
           type: 'STRING',
           description: 'Optional product ID'
         }
-      },
-      required: ['pincode']
+      }
     }
   },
   {
@@ -204,6 +240,30 @@ export async function dispatchLiveToolCall(
   console.log(`[GeminiLive:ToolDispatch] Executing tool: ${name}`, args);
 
   switch (name) {
+    case 'getAllMattresses': {
+      const res = await businessDataProvider.getAllMattresses();
+      return {
+        output: res,
+        logSummary: `Retrieved all ${res.data?.mattresses.length || 0} mattress models with verified prices, discounts, and free delivery`
+      };
+    }
+
+    case 'getAvailableProducts': {
+      const res = await businessDataProvider.getAvailableProducts(args.category);
+      return {
+        output: res,
+        logSummary: `Retrieved ${res.data?.length || 0} available products in catalogue`
+      };
+    }
+
+    case 'getDeliveryPolicy': {
+      const res = await businessDataProvider.getDeliveryPolicy(args.productCategory);
+      return {
+        output: res,
+        logSummary: `Retrieved delivery policy: ${res.data?.title} (Fee: ₹0 Free Pan-India)`
+      };
+    }
+
     case 'searchProducts': {
       const res = await businessDataProvider.searchProducts(args.query, args.category);
       return {

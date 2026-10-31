@@ -22,6 +22,8 @@ import {
 } from '../server/twilioService';
 import { businessDataProvider } from '../src/services/businessData/BusinessDataProvider';
 import { normalizePhone } from '../server/exotelService';
+import { normalizeGeminiHistory } from '../server/geminiQueryService';
+import { dispatchLiveToolCall } from '../src/services/geminiLive/liveTools';
 
 let passed = 0;
 let failed = 0;
@@ -475,6 +477,195 @@ async function runTwilioTestSuite() {
   assert(inboundTwiml.includes('Sleep Company'), 'Inbound TwiML speaks personalized Sleep Company greeting');
 
   updateTwilioSessionStatus(inboundSession.sessionId, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 23: Customer Name & Professional Intro in Greeting (Issue 1)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 23] Personalized Customer Name & Professional Introduction');
+  const chinmaySession = createTwilioVoiceSession({
+    leadId: 'lead-1',
+    customerName: '', // empty name
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+  assert(chinmaySession.customerName === 'Chinmay', 'Customer name automatically resolves to Chinmay when phone matches +917204104491');
+
+  const chinmayGreeting = generateTwilioGreeting(chinmaySession);
+  assert(chinmayGreeting.startsWith('Hello Chinmay!'), 'Greeting addresses customer directly as "Hello Chinmay!" instead of "Hello customer"');
+  assert(chinmayGreeting.includes('Arvind Rajan'), 'Greeting introduces frontline specialist Arvind Rajan');
+  assert(chinmayGreeting.includes('The Sleep Company'), 'Greeting explicitly identifies The Sleep Company');
+  assert(chinmayGreeting.includes('Ortho GRID'), 'Greeting mentions enquired product (Ortho GRID)');
+  updateTwilioSessionStatus(chinmaySession.sessionId, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 24: Retrieval of All Available Mattresses, Prices, and Discounts (Issue 2 & 4 & 7)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 24] Comprehensive Mattresses Catalogue, Verified Prices & Discounts');
+  const allMattressesRes = await businessDataProvider.getAllMattresses();
+  assert(allMattressesRes.verified === true, 'getAllMattresses returns verified authoritative business data');
+  assert(allMattressesRes.data?.mattresses.length === 2, 'Returns both SmartGRID Ortho and SmartGRID Luxe mattress models');
+
+  const ortho = allMattressesRes.data?.mattresses.find((m) => m.id === 'ortho-grid');
+  const luxe = allMattressesRes.data?.mattresses.find((m) => m.id === 'smart-luxe');
+  assert(ortho !== undefined && ortho.startingPrice === 5990, 'SmartGRID Ortho starting price verified as ₹5,990 (Single)');
+  assert(luxe !== undefined && luxe.startingPrice === 13390, 'SmartGRID Luxe starting price verified as ₹13,390 (Queen)');
+
+  // Verify searchProducts matches broad / generic queries
+  const broadSearch = await businessDataProvider.searchProducts('all mattresses');
+  assert(broadSearch.data && broadSearch.data.length >= 2, 'searchProducts matches generic query "all mattresses" instead of returning empty');
+
+  // Verify tool dispatch
+  const toolResult = await dispatchLiveToolCall('getAllMattresses', {});
+  assert(toolResult.output.verified === true, 'Tool dispatch for getAllMattresses succeeds with verified data');
+  assert(toolResult.output.data.activeOffers.some((o: any) => o.code === 'FESTIVE1000'), 'Includes active festive discount FESTIVE1000');
+  assert(toolResult.output.data.activeOffers.some((o: any) => o.code === 'COMBOPILLOW'), 'Includes active bundle offer COMBOPILLOW');
+
+  // --------------------------------------------------------------------------
+  // TEST 25: Delivery Policy & Delivery Fee Verification (Issue 3 & 7)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 25] Delivery Policy & Delivery Fee Verification (100% Free Pan-India)');
+  const deliveryPolicyRes = await businessDataProvider.getDeliveryPolicy();
+  assert(deliveryPolicyRes.verified === true, 'getDeliveryPolicy returns verified policy');
+  assert(deliveryPolicyRes.data?.policyType === 'DELIVERY', 'Returns official DELIVERY policy');
+  assert(deliveryPolicyRes.data?.detailedTerms.some((t) => t.includes('100% Free') || t.includes('₹0')), 'Confirms ₹0 delivery fee / 100% Free delivery across India');
+
+  // Verify getDeliveryAvailability handles omitted or general PIN code without error
+  const generalDelivery = await businessDataProvider.getDeliveryAvailability();
+  assert(generalDelivery.verified === true, 'getDeliveryAvailability succeeds without requiring 6-digit PIN');
+  assert(generalDelivery.data?.deliveryFee === 0, 'Delivery fee is explicitly ₹0');
+  assert(generalDelivery.data?.deliverable === true, 'Pan-India deliverable confirmed');
+
+  // Verify metro express delivery
+  const blrDelivery = await businessDataProvider.getDeliveryAvailability('560034');
+  assert(blrDelivery.verified === true && blrDelivery.data?.estimatedDays === 2, 'Bengaluru PIN (560034) gets express 48-72h delivery');
+
+  // Verify getDeliveryPolicy tool dispatch
+  const deliveryToolResult = await dispatchLiveToolCall('getDeliveryPolicy', {});
+  assert(deliveryToolResult.output.verified === true, 'Tool dispatch for getDeliveryPolicy succeeds');
+
+  // --------------------------------------------------------------------------
+  // TEST 26: Multi-Turn Conversation Memory & History Normalization (Issue 5)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 26] Multi-Turn Conversation Memory & History Normalization');
+  // Scenario A: History starts with model turn (e.g. AI greeting)
+  const historyWithModelFirst: any = [
+    { speaker: 'assistant', text: 'Hello Chinmay! This is Arvind Rajan calling from The Sleep Company.' },
+    { speaker: 'user', text: 'What is the price of the Ortho GRID?' }
+  ];
+  const normalizedA = normalizeGeminiHistory(historyWithModelFirst);
+  assert(normalizedA[0].role === 'user', 'Normalized history always begins with role "user"');
+  assert(normalizedA[normalizedA.length - 1].role === 'model', 'Normalized history always ends with role "model" so upcoming message is valid user turn');
+
+  // Scenario B: Consecutive turns of same role
+  const historyWithDuplicates: any = [
+    { speaker: 'user', text: 'Hi.' },
+    { speaker: 'user', text: 'What is the discount?' },
+    { speaker: 'assistant', text: 'We offer code FESTIVE1000.' },
+    { speaker: 'assistant', text: 'It gives ₹1,000 off.' }
+  ];
+  const normalizedB = normalizeGeminiHistory(historyWithDuplicates);
+  assert(normalizedB.length === 2, 'Merged consecutive same-role turns into strictly alternating user -> model sequence');
+  assert(normalizedB[0].role === 'user' && normalizedB[1].role === 'model', 'Strict user -> model alternation verified');
+
+  // --------------------------------------------------------------------------
+  // TEST 27: Multi-Turn Dialogue Simulation Without Hallucination (Issue 6 & 8)
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 27] Multi-Turn Dialogue Simulation (Prices, Discounts, Delivery & Closing)');
+  const dialogSession = createTwilioVoiceSession({
+    leadId: 'lead-sim-dialog',
+    customerName: 'Chinmay',
+    customerPhone: '+917204104491',
+    product: 'Ortho GRID'
+  });
+
+  // Turn 1: Price inquiry
+  dialogSession.currentTurn = 1;
+  const turn1 = await processCustomerSpeechWithGemini(
+    dialogSession,
+    'Can you tell me the price of the auto grid mattress?',
+    'invalid-key-triggers-verified-fallback'
+  );
+  assert(turn1.responseText.includes('8,490') || turn1.responseText.includes('5,990'), 'Turn 1 verifies Ortho GRID pricing (₹8,490 Queen / ₹5,990 Single)');
+  assert(turn1.shouldContinue === true, 'Turn 1 keeps call active');
+  dialogSession.turns.push({
+    turn: 1,
+    customerSpeech: 'Can you tell me the price of the auto grid mattress?',
+    aiResponseText: turn1.responseText,
+    timestamp: '14:00'
+  });
+
+  // Turn 2: All mattresses and discounts (handling speech-to-text phonetic variations)
+  dialogSession.currentTurn = 2;
+  const turn2 = await processCustomerSpeechWithGemini(
+    dialogSession,
+    'Kannada options of messages you have and what discount I can get?',
+    'invalid-key-triggers-verified-fallback'
+  );
+  assert(turn2.responseText.includes('Ortho GRID') && turn2.responseText.includes('SmartGRID Luxe'), 'Turn 2 presents both Ortho GRID and SmartGRID Luxe mattresses');
+  assert(turn2.responseText.includes('FESTIVE1000') || turn2.responseText.includes('1,000'), 'Turn 2 includes FESTIVE1000 discount code');
+  assert(turn2.responseText.includes('pillow'), 'Turn 2 mentions free contour pillow bundle');
+  dialogSession.turns.push({
+    turn: 2,
+    customerSpeech: 'Kannada options of messages you have and what discount I can get?',
+    aiResponseText: turn2.responseText,
+    timestamp: '14:01'
+  });
+
+  // Turn 3: Delivery fee question
+  dialogSession.currentTurn = 3;
+  const turn3 = await processCustomerSpeechWithGemini(
+    dialogSession,
+    'Is there any delivery fee or shipping charge?',
+    'invalid-key-triggers-verified-fallback'
+  );
+  assert(turn3.responseText.includes('Free') && (turn3.responseText.includes('zero') || turn3.responseText.includes('0')), 'Turn 3 accurately confirms 100% Free delivery with zero shipping charges');
+  dialogSession.turns.push({
+    turn: 3,
+    customerSpeech: 'Is there any delivery fee or shipping charge?',
+    aiResponseText: turn3.responseText,
+    timestamp: '14:02'
+  });
+
+  // Turn 4: Friendly closing / thank you
+  dialogSession.currentTurn = 4;
+  const turn4 = await processCustomerSpeechWithGemini(
+    dialogSession,
+    'Thank you so much, that answers all my questions. Goodbye!',
+    'invalid-key-triggers-verified-fallback'
+  );
+  assert(turn4.shouldEndCall === true, 'Turn 4 detects customer closing intent and sets shouldEndCall=true');
+  assert(turn4.intent === 'goodbye', 'Turn 4 classified intent as goodbye');
+
+  updateTwilioSessionStatus(dialogSession.sessionId, 'completed');
+
+  // --------------------------------------------------------------------------
+  // TEST 28: Website Outbound Call Button Compatibility Verification
+  // --------------------------------------------------------------------------
+  console.log('\n[TEST 28] Website "Call Using AI Agent" Button End-to-End Compatibility');
+  // Verify that the exact payload sent by FloatingActionPill.tsx initiates properly
+  const websiteButtonPayload = {
+    to: '+917204104491',
+    clientName: 'Chinmay',
+    leadId: 'lead-1',
+    product: 'Ortho GRID',
+    value: 8490,
+    buyingSignals: ['Comparing Ortho GRID with competitors', 'Asked about 0% EMI and 100-night trial'],
+    notes: 'High-intent lead who visited store yesterday looking at Ortho GRID mattress.',
+    isTrialSample: false
+  };
+
+  const webCallResult = await initiateTwilioOutboundCall(websiteButtonPayload, {
+    ...testEnv,
+    TWILIO_ENABLE_LIVE_CALLS: 'false' // Simulation safety for test
+  });
+
+  assert(webCallResult.success === true, 'Website button payload initiates call successfully');
+  assert(webCallResult.stage === 'call_created', 'Call created and queued');
+  const webSession = getTwilioSession(webCallResult.sessionId!);
+  assert(webSession !== undefined && webSession.customerName === 'Chinmay', 'Web session initialized for customer Chinmay');
+  assert(webSession?.product === 'Ortho GRID', 'Product accurately tracked as Ortho GRID');
+
+  updateTwilioSessionStatus(webCallResult.sessionId!, 'completed');
 
   // --------------------------------------------------------------------------
   // SUMMARY

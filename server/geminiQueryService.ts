@@ -36,6 +36,62 @@ export interface ConversationHistoryItem {
 }
 
 /**
+ * Normalizes multi-turn conversation history for Google Gen AI:
+ * 1. Ensures first message is strictly 'user'.
+ * 2. Merges consecutive same-role turns to enforce strict 'user' -> 'model' alternation.
+ * 3. Ensures history ends with 'model' so chat.sendMessage(question) is a valid 'user' message.
+ */
+export function normalizeGeminiHistory(
+  rawHistory?: ConversationHistoryItem[]
+): Array<{ role: 'user' | 'model'; parts: [{ text: string }] }> {
+  if (!rawHistory || rawHistory.length === 0) return [];
+
+  const rawEntries = rawHistory
+    .map((h: any) => {
+      const text = (h.text || h.parts?.[0]?.text || '').trim();
+      const isUser = h.speaker === 'user' || h.role === 'user';
+      return {
+        role: (isUser ? 'user' : 'model') as 'user' | 'model',
+        text
+      };
+    })
+    .filter((e) => e.text.length > 0);
+
+  if (rawEntries.length === 0) return [];
+
+  const alternating: Array<{ role: 'user' | 'model'; text: string }> = [];
+
+  for (const entry of rawEntries) {
+    if (alternating.length === 0) {
+      if (entry.role === 'model') {
+        alternating.push({
+          role: 'user',
+          text: 'Hello, I received a call regarding my enquiry on The Sleep Company mattresses.'
+        });
+      }
+      alternating.push(entry);
+    } else {
+      const last = alternating[alternating.length - 1];
+      if (last.role === entry.role) {
+        last.text = `${last.text} ${entry.text}`;
+      } else {
+        alternating.push(entry);
+      }
+    }
+  }
+
+  // Ensure history ends with 'model' so the upcoming chat.sendMessage is a valid 'user' turn
+  if (alternating.length > 0 && alternating[alternating.length - 1].role === 'user') {
+    alternating.pop();
+  }
+
+  return alternating.map((item) => ({
+    role: item.role,
+    parts: [{ text: item.text }]
+  }));
+}
+
+/**
  * Execute a query with Gemini and verified multi-turn tool calling with automatic model fallback
  */
 export async function executeGeminiQuery(
@@ -50,18 +106,7 @@ export async function executeGeminiQuery(
   }
 
   const ai = new GoogleGenAI({ apiKey: activeKey });
-
-  // Format valid prior history turns for multi-turn conversational context
-  const formattedHistory = (history || [])
-    .map((h: any) => {
-      const text = (h.text || h.parts?.[0]?.text || '').trim();
-      const isUser = h.speaker === 'user' || h.role === 'user';
-      return {
-        role: isUser ? 'user' : 'model',
-        parts: [{ text }]
-      };
-    })
-    .filter((h) => h.parts[0].text.length > 0);
+  const formattedHistory = normalizeGeminiHistory(history);
 
   // Prioritize requested model, then fall back through candidate chain if rate limit or quota is hit
   const modelsToTry = [model, ...CANDIDATE_QUERY_MODELS.filter((m) => m !== model)];

@@ -102,12 +102,31 @@ export interface IBusinessDataProvider {
   }>>;
   getWarrantyPolicy(productCategory?: string): Promise<BusinessDataResult<VerifiedPolicy>>;
   getTrialAndReturnPolicy(productCategory?: string): Promise<BusinessDataResult<VerifiedPolicy>>;
-  getDeliveryAvailability(pincode: string, productId?: string): Promise<BusinessDataResult<{
+  getAllMattresses(): Promise<BusinessDataResult<{
+    mattresses: Array<{
+      id: string;
+      name: string;
+      category: string;
+      tagline: string;
+      material: string;
+      startingPrice: number;
+      variants: ProductVariant[];
+      warrantyYears: number;
+      trialNights: number;
+    }>;
+    activeOffers: VerifiedOffer[];
+    deliveryFee: number;
+    emiStartingFrom: number;
+  }>>;
+  getAvailableProducts(category?: string): Promise<BusinessDataResult<VerifiedProduct[]>>;
+  getDeliveryPolicy(productCategory?: string): Promise<BusinessDataResult<VerifiedPolicy>>;
+  getDeliveryAvailability(pincode?: string, productId?: string): Promise<BusinessDataResult<{
     pincode: string;
     deliverable: boolean;
     estimatedDays: number;
     deliveryFee: number;
     codAvailable: boolean;
+    summary?: string;
   }>>;
   getApprovedFAQ(topic: string): Promise<BusinessDataResult<ApprovedFAQ[]>>;
   checkProductStock(productIdOrKeyword: string, sizeOrVariant?: string): Promise<BusinessDataResult<{

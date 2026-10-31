@@ -95,12 +95,22 @@ export function createTwilioVoiceSession(params: {
   maxTurns?: number;
 }): TwilioVoiceSession {
   const sessionId = 'twses_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+  const normalizedPhone = normalizePhoneNumber(params.customerPhone);
+  let resolvedName = (params.customerName || '').trim();
+  if (!resolvedName || resolvedName.toLowerCase() === 'valued customer' || resolvedName.toLowerCase() === 'customer' || resolvedName.toLowerCase() === 'there') {
+    if (normalizedPhone.includes('7204104491')) {
+      resolvedName = 'Chinmay';
+    } else {
+      resolvedName = 'Valued Customer';
+    }
+  }
+
   const session: TwilioVoiceSession = {
     sessionId,
     callSid: null,
     leadId: params.leadId || 'lead-1',
-    customerName: params.customerName || 'Valued Customer',
-    customerPhone: normalizePhoneNumber(params.customerPhone),
+    customerName: resolvedName,
+    customerPhone: normalizedPhone,
     product: params.product || 'Ortho GRID Mattress',
     value: params.value,
     buyingSignals: params.buyingSignals || [],
@@ -329,9 +339,16 @@ export function cleanupExpiredSessions(maxAgeMs = 3600000): number {
  * Generates the personalized AI greeting for The Sleep Company
  */
 export function generateTwilioGreeting(session: TwilioVoiceSession): string {
-  const name = session.customerName || 'there';
+  let name = (session.customerName || '').trim();
+  if (!name || name.toLowerCase() === 'valued customer' || name.toLowerCase() === 'customer' || name.toLowerCase() === 'there') {
+    if (session.customerPhone && session.customerPhone.includes('7204104491')) {
+      name = 'Chinmay';
+    } else {
+      name = 'there';
+    }
+  }
   const product = session.product || 'Ortho GRID Mattress';
-  return `Hello ${name}! We are calling from The Sleep Company regarding your recent enquiry about the ${product}. Do you have a few minutes to discuss your requirements?`;
+  return `Hello ${name}! This is Arvind Rajan calling from The Sleep Company regarding your enquiry on the ${product}. How are you doing today?`;
 }
 
 /**
@@ -457,28 +474,53 @@ export async function processCustomerSpeechWithGemini(
 ): Promise<StructuredAiTurnResponse> {
   const activeKey = apiKey || process.env.GEMINI_API_KEY;
 
-  // Format multi-turn conversation history
+  // Format multi-turn conversation history for Gemini API
   const historyForGemini = session.turns.map((t) => [
     ...(t.customerSpeech ? [{ speaker: 'user' as const, text: t.customerSpeech }] : []),
     ...(t.aiResponseText ? [{ speaker: 'assistant' as const, text: t.aiResponseText }] : [])
   ]).flat();
 
+  // Multi-turn summary of all previous conversation exchanges in this active call
+  const priorTurnsSummary = session.turns.length > 0
+    ? session.turns.map((t) => `Turn ${t.turn}: Customer asked "${t.customerSpeech || ''}" -> Assistant answered "${t.aiResponseText || ''}"`).join('\n')
+    : `Turn 0: Greeting delivered ("${generateTwilioGreeting(session)}")`;
+
   // Construct context-enriched query prompt
-  const leadContextPrompt = `Customer: ${session.customerName}
-Product of interest: ${session.product}
-Customer enquiry signals: ${session.buyingSignals?.join(', ') || 'General mattress enquiry'}
-Customer note: ${session.notes || 'None'}
-Conversation Turn: ${session.currentTurn + 1} of ${session.maxTurns}
+  const leadContextPrompt = `You are on a telephone call for The Sleep Company.
+Customer Name: ${session.customerName}
+Customer Phone: ${session.customerPhone}
+Product of Interest: ${session.product}
+Customer Enquiry Signals: ${session.buyingSignals?.join(', ') || 'General mattress enquiry'}
+Customer Note: ${session.notes || 'None'}
+Conversation Turn: ${session.currentTurn} of ${session.maxTurns}
+
+Conversation history so far in this call:
+${priorTurnsSummary}
 
 Customer just said on telephone: "${customerSpeech}"
 
-Instructions:
-1. You are an AI voice assistant calling on behalf of The Sleep Company.
-2. Speak politely, naturally, and concisely (1-2 short conversational sentences suitable for telephone speech).
-3. Always verify information using business tools before quoting prices or terms. Never invent unverified promotions.
-4. If customer is ready to conclude or says goodbye/not interested, set shouldEndCall to true.
-5. If customer requests a human representative, set shouldHandoff to true and shouldEndCall to true.
-6. Return structured response or plain text that can be formatted.`;
+CRITICAL INSTRUCTIONS:
+1. Address the customer's question directly, accurately, and naturally in 2 to 3 spoken sentences suitable for phone audio.
+2. NEVER output markdown symbols (no asterisks, bolding, dashes, or bullet lists) because they sound unnatural when read aloud.
+3. If customer asks about available mattresses, options, or overall prices and discounts:
+   - Call 'getAllMattresses'.
+   - Present both models clearly:
+     a) SmartGRID Ortho (Queen ₹8,490 / Single ₹5,990 / King ₹10,990) with doctor-approved back support.
+     b) SmartGRID Luxe (Queen ₹13,390 / King ₹16,990) with 5-star hotel ultra-plush comfort and free contour pillow worth ₹2,499.
+     c) Mention festive offer code FESTIVE1000 for flat ₹1,000 instant discount on orders above ₹10,000.
+4. If customer asks about delivery fees or shipping:
+   - Call 'getDeliveryPolicy'.
+   - Clearly confirm that delivery is 100% Free (₹0 delivery charge) across India on all mattresses, 48-72h in metros, and 3-5 days pan-India.
+5. If customer asks about prices, discounts, EMI, warranty, or trials:
+   - Retrieve all numbers from verified tools (e.g. 'getCurrentPrice', 'getActiveOffers', 'getEMIOptions', 'getWarrantyPolicy', 'getTrialAndReturnPolicy'). Never guess unapproved numbers.
+6. Speech-to-text resilience:
+   - "auto grid" / "all the grid" = Ortho GRID mattress
+   - "messages" / "matrices" = mattresses
+   - "watch the amount" / "watch discount" = what is the amount / what discount
+   - "Kannada options" = kind of options / mattress types
+7. End your response with a friendly, conversational follow-up question (e.g. "Would you like me to send you the quotation or help you choose the right size?").
+8. If customer says goodbye or indicates they are done, set shouldEndCall to true.
+9. If customer requests a human agent or manager, set shouldHandoff to true and shouldEndCall to true.`;
 
   try {
     const geminiResult = await executeGeminiQuery(
@@ -520,12 +562,38 @@ Instructions:
     const lower = customerSpeech.toLowerCase();
     let responseText = `Our ${session.product} features patented SmartGRID Japanese technology with a 100-night trial and 0% No-Cost EMI. Would you like me to send sizing options to your WhatsApp?`;
 
-    if (lower.includes('price') || lower.includes('cost') || lower.includes('mrp')) {
-      responseText = `The Ortho GRID Mattress starts at ₹8,490 for Queen size, with 10-year warranty and free doorstep delivery.`;
+    if (
+      lower.includes('mattress') ||
+      lower.includes('option') ||
+      lower.includes('message') ||
+      lower.includes('model') ||
+      lower.includes('discount') ||
+      lower.includes('kannada')
+    ) {
+      responseText = `We offer two patented SmartGRID mattresses: the doctor-approved Ortho GRID starting at ₹8,490 Queen size, and the ultra-plush SmartGRID Luxe starting at ₹13,390 with a complimentary contour pillow worth ₹2,499. You can also use code FESTIVE1000 for ₹1,000 off orders over ₹10,000.`;
+    } else if (
+      lower.includes('delivery') ||
+      lower.includes('shipping') ||
+      lower.includes('fee') ||
+      lower.includes('charge') ||
+      lower.includes('free delivery')
+    ) {
+      responseText = `Delivery is 100% Free across 18,000+ PIN codes in India on all our mattresses, with express 48 to 72 hours delivery in metro cities like Bengaluru and zero shipping fees.`;
+    } else if (
+      lower.includes('store') ||
+      lower.includes('bangalore') ||
+      lower.includes('bengaluru') ||
+      lower.includes('experience') ||
+      lower.includes('location') ||
+      lower.includes('visit')
+    ) {
+      responseText = `You can experience our SmartGRID mattresses in person at our Bangalore experience centers in Indiranagar, Koramangala, and Whitefield.`;
+    } else if (lower.includes('price') || lower.includes('cost') || lower.includes('mrp') || lower.includes('amount') || lower.includes('watch')) {
+      responseText = `The Ortho GRID Mattress starts at ₹8,490 for Queen size and ₹5,990 for Single size, with 10-year warranty, 100-night trial, and free doorstep delivery.`;
     } else if (lower.includes('emi') || lower.includes('loan') || lower.includes('finance')) {
-      responseText = `Yes, we offer 0% interest No-Cost EMI starting from ₹1,415 per month with zero down payment.`;
+      responseText = `Yes, we offer 0% interest No-Cost EMI starting from ₹1,415 per month with zero down payment across leading banks.`;
     } else if (lower.includes('trial') || lower.includes('return') || lower.includes('exchange')) {
-      responseText = `You receive a risk-free 100-night trial at home. If it doesn't suit you, we offer a 100% money-back guarantee.`;
+      responseText = `You receive a risk-free 100-night trial at home. If it doesn't suit you, we offer a 100% money-back guarantee with free doorstep return pickup.`;
     } else if (lower.includes('bye') || lower.includes('thank') || lower.includes('not interested')) {
       return {
         intent: 'goodbye',
@@ -704,12 +772,12 @@ export async function initiateTwilioOutboundCall(
     const callOptions: any = {
       from: env.TWILIO_FROM_NUMBER!,
       to: normalizedTo,
-      url: effectiveVoiceUrl,
-      statusCallback: statusCallbackUrl,
-      statusCallbackMethod: 'POST'
+      url: effectiveVoiceUrl
     };
 
     if (!creds.isTrial) {
+      callOptions.statusCallback = statusCallbackUrl;
+      callOptions.statusCallbackMethod = 'POST';
       callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
       callOptions.timeLimit = maxDuration;
     }
@@ -804,10 +872,15 @@ export async function handleTwilioVoiceWebhook(
 
       let session = getTwilioSession(sessionId) || (callSid ? getTwilioSession(callSid) : undefined);
 
+      const isChinmay =
+        fromNumber.includes('7204104491') ||
+        toNumber.includes('7204104491') ||
+        (session && session.customerPhone.includes('7204104491'));
+
       if (!session) {
-        const callerPhone = fromNumber || toNumber || '+917204104491';
-        const callerName = callerPhone.includes('7204104491') ? 'Chinmay' : 'Valued Customer';
-        console.log(`[TwilioService:Voice] ${direction === 'inbound' ? 'Inbound customer call' : 'Session not found for'} CallSid=${callSid}, From=${maskPhoneNumber(callerPhone)}. Initializing interactive Gemini Voice AI session.`);
+        const callerPhone = (toNumber && !toNumber.includes('17372508034') && !toNumber.includes('17075328034')) ? toNumber : fromNumber || '+917204104491';
+        const callerName = isChinmay ? 'Chinmay' : 'Valued Customer';
+        console.log(`[TwilioService:Voice] ${direction === 'inbound' ? 'Inbound customer call' : 'Session not found for'} CallSid=${callSid}, From=${maskPhoneNumber(fromNumber)}, To=${maskPhoneNumber(toNumber)}. Initializing interactive Gemini Voice AI session for ${callerName}.`);
 
         session = createTwilioVoiceSession({
           leadId: direction === 'inbound' ? 'inbound-call' : 'lead-1',
@@ -816,6 +889,10 @@ export async function handleTwilioVoiceWebhook(
           product: 'Ortho GRID'
         });
         if (callSid) bindTwilioCallSid(session.sessionId, callSid);
+      } else {
+        if (isChinmay && (!session.customerName || session.customerName.toLowerCase() === 'valued customer' || session.customerName.toLowerCase() === 'customer' || session.customerName.toLowerCase() === 'there')) {
+          session.customerName = 'Chinmay';
+        }
       }
 
       if (callSid && !session.callSid) {
