@@ -1,16 +1,11 @@
 # OnGround.ai Call Centre Web Application
-> **Frontline Agent Workspace for The Sleep Company**  
-> Engineering Hiring Assignment Submission for **OnGround.ai**  
-> **Submission Deadline**: Tuesday, 20 October 2026, 10:00 AM IST  
-> **Submitted to**: `mukunda@on-ground.ai`  
-> **Live Production URL**: [https://on-groundai.netlify.app](https://on-groundai.netlify.app)  
-> **Status**: Verified Production Grade · 15 Automated Test Suites (581+ Tests Passing) · Zero Build Errors
+> **Live Production URL**: [On-Ground.ai · Call Centre](https://ongroundai.netlify.app/)
 
 ---
 
 ## 1. Executive Summary & Architecture Overview
 
-This repository contains the reconstructed, enterprise-grade **OnGround.ai Call Centre Web Application** built for the OnGround.ai Engineering Hiring Assignment. It provides an operational shift workspace for frontline call-centre agents (featuring the identity of **Arvind Rajan**, frontline specialist at **The Sleep Company**), driving lead conversion, outbound telephony, offline walk-in recovery, calendar scheduling, SOP compliance auditing, peer collaboration, and real-time AI voice agents.
+This repository contains the reconstructed, enterprise-grade **OnGround.ai Call Centre Web Application**. It provides an operational shift workspace for frontline call-centre agents (featuring the identity of **Arvind Rajan**, frontline specialist at **The Sleep Company**), driving lead conversion, outbound telephony, offline walk-in recovery, calendar scheduling, SOP compliance auditing, peer collaboration, and real-time AI voice agents.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -339,8 +334,8 @@ Production build compiles cleanly with zero errors:
 ## 4. Production Deployment (Netlify)
 
 The application is pre-configured for automated continuous deployment on **Netlify**:
-- **Site Name**: `on-groundai`
-- **Primary Domain**: [https://on-groundai.netlify.app](https://on-groundai.netlify.app)
+- **Site Name**: `ongroundai`
+- **Primary Domain**: [On-Ground.ai · Call Centre](https://ongroundai.netlify.app/)
 - **Build Command**: `pnpm run build`
 - **Publish Directory**: `dist`
 - **Functions Directory**: `netlify/functions`
@@ -590,12 +585,3 @@ As instructed by the assignment guidelines:
   - Authored mathematical resamplers for ITU-T G.711 mu-law audio conversion between telephone PSTN and 16kHz/24kHz linear PCM.
   - Engineered the TwiML multi-turn conversational loop, state machines, and concurrency mutex guards.
   - Generated unit test suites enforcing regression prevention across all calling paths and viewport breakpoints.
-
----
-
-## 11. Submission Metadata
-- **Candidate Submission**: OnGround.ai Engineering Hiring Assignment
-- **Addressed To**: `mukunda@on-ground.ai`
-- **Subject**: `Assignment Submission: Chinmaygouda Patil`
-- **Deadline**: Tuesday, 20 October 2026, 10:00 AM IST
-- **Status**: **100% Core Requirements Implemented · 100% Bonus Features Implemented · 15 Test Suites Passed (581/581 Tests) · Zero Build Errors**
